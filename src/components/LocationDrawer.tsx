@@ -17,8 +17,8 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Navigation03Icon, BookOpen01Icon, Image01Icon,
   Globe02Icon, Location01Icon, Alert02Icon,
-  Leaf01Icon, ArrowRight01Icon, SunCloud01Icon,
-  WindIcon, Droplet01Icon, ThermometerIcon,
+  Leaf01Icon, ArrowRight01Icon,
+  FastWindIcon, DropletIcon, Sun03Icon,
 } from "@hugeicons/core-free-icons";
 
 interface LocationDrawerProps {
