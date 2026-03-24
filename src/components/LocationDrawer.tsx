@@ -111,15 +111,15 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
           </div>
           <div className="flex flex-wrap gap-3 mt-2 text-[11px] text-muted-foreground font-mono">
             <span className="flex items-center gap-1">
-              <HugeiconsIcon icon={ThermometerIcon} size={11} />
+              <HugeiconsIcon icon={Sun03Icon} size={11} />
               Ressenti {current.apparentTemperature.toFixed(1)}°C
             </span>
             <span className="flex items-center gap-1">
-              <HugeiconsIcon icon={Droplet01Icon} size={11} />
+              <HugeiconsIcon icon={DropletIcon} size={11} />
               {current.humidity}%
             </span>
             <span className="flex items-center gap-1">
-              <HugeiconsIcon icon={WindIcon} size={11} />
+              <HugeiconsIcon icon={FastWindIcon} size={11} />
               {current.windSpeed.toFixed(0)} km/h {getWindDirection(current.windDirection)}
             </span>
           </div>
