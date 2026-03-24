@@ -1,20 +1,21 @@
 import { useState, useCallback } from "react";
 import MapView from "@/components/MapView";
 import SearchBar from "@/components/SearchBar";
-import WeatherPanel from "@/components/WeatherPanel";
+import LocationDrawer from "@/components/LocationDrawer";
 import { fetchWeather, type WeatherData } from "@/lib/weather";
 import { reverseGeocode, type GeoResult } from "@/lib/geocoder";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { CompassIcon } from "@hugeicons/core-free-icons";
 
 export default function Index() {
-  const [center, setCenter] = useState<[number, number]>([2.3522, 48.8566]); // Paris
+  const [center, setCenter] = useState<[number, number]>([2.3522, 48.8566]);
   const [zoom] = useState(6);
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [locationName, setLocationName] = useState("");
   const [markerPos, setMarkerPos] = useState<[number, number] | null>(null);
   const [loading, setLoading] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lon: number }>({ lat: 48.8566, lon: 2.3522 });
 
   const loadWeather = useCallback(async (lat: number, lon: number, name?: string) => {
     setLoading(true);
@@ -27,7 +28,8 @@ export default function Index() {
       setLocationName(resolvedName);
       setCenter([lon, lat]);
       setMarkerPos([lon, lat]);
-      setPanelOpen(true);
+      setSelectedCoords({ lat, lon });
+      setDrawerOpen(true);
     } catch (e) {
       console.error("Weather fetch failed:", e);
     } finally {
@@ -53,7 +55,6 @@ export default function Index() {
 
   return (
     <div className="h-screen w-screen overflow-hidden relative">
-      {/* Map */}
       <MapView center={center} zoom={zoom} onMapClick={handleMapClick} markerPosition={markerPos} />
 
       {/* Search overlay */}
@@ -76,15 +77,18 @@ export default function Index() {
         </div>
       )}
 
-      {/* Weather panel */}
-      {panelOpen && weather && (
-        <div className="absolute top-0 right-0 bottom-0 w-full md:w-[420px] z-20 border-l border-border shadow-subtle">
-          <WeatherPanel weather={weather} locationName={locationName} onClose={() => setPanelOpen(false)} />
-        </div>
-      )}
+      {/* Bottom sheet drawer */}
+      <LocationDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        weather={weather}
+        locationName={locationName}
+        lat={selectedCoords.lat}
+        lon={selectedCoords.lon}
+      />
 
       {/* Branding */}
-      {!panelOpen && (
+      {!drawerOpen && (
         <div className="absolute bottom-6 left-4 z-10 animate-fade-in-up">
           <div className="rounded-lg border border-overlay-border bg-overlay px-4 py-3 shadow-subtle">
             <h2 className="font-serif text-lg">Atlas Weather</h2>
