@@ -22,7 +22,7 @@ export default function MapView({ center, zoom, onMapClick, markerPosition }: Ma
       style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
       center,
       zoom,
-      attributionControl: true,
+      attributionControl: {},
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "bottom-right");
