@@ -3,13 +3,15 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Layers01Icon } from "@hugeicons/core-free-icons";
+import { Layers01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
+import type { MapProjectionData } from "@/pages/Index";
 
 interface MapViewProps {
   center: [number, number]; // [lon, lat]
   zoom: number;
   onMapClick?: (lat: number, lon: number) => void;
   markerPosition?: [number, number] | null;
+  projectionData?: MapProjectionData;
 }
 
 const MAP_STYLES = {
@@ -50,11 +52,20 @@ const MAP_STYLES = {
 
 type StyleKey = keyof typeof MAP_STYLES;
 
-export default function MapView({ center, zoom, onMapClick, markerPosition }: MapViewProps) {
+export default function MapView({ center, zoom, onMapClick, markerPosition, projectionData }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
   const [currentStyle, setCurrentStyle] = useState<StyleKey>("plan");
+  const [activeProjection, setActiveProjection] = useState<MapProjectionData>(null);
+
+  // Sync projection data
+  useEffect(() => {
+    setActiveProjection(projectionData || null);
+    if (projectionData && projectionData.type === 'quakes') {
+      setCurrentStyle("sombre"); // Force dark mode for quakes
+    }
+  }, [projectionData]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -107,7 +118,7 @@ export default function MapView({ center, zoom, onMapClick, markerPosition }: Ma
       markerRef.current = null;
     }
 
-    if (markerPosition) {
+    if (markerPosition && !activeProjection) {
       const el = document.createElement("div");
       el.style.width = "14px";
       el.style.height = "14px";
@@ -120,12 +131,188 @@ export default function MapView({ center, zoom, onMapClick, markerPosition }: Ma
         .setLngLat(markerPosition)
         .addTo(mapRef.current);
     }
-  }, [markerPosition]);
+  }, [markerPosition, activeProjection]);
+
+  // Handle Map Projections (Quakes, Nature)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Helper to safely remove layers and sources
+    const cleanupMap = () => {
+      if (map.getLayer("quakes-layer")) map.removeLayer("quakes-layer");
+      if (map.getLayer("quakes-labels")) map.removeLayer("quakes-labels");
+      if (map.getSource("quakes")) map.removeSource("quakes");
+
+      if (map.getLayer("nature-layer")) map.removeLayer("nature-layer");
+      if (map.getLayer("nature-labels")) map.removeLayer("nature-labels");
+      if (map.getSource("nature")) map.removeSource("nature");
+    };
+
+    const setupProjections = () => {
+      cleanupMap();
+
+      if (!activeProjection) return;
+
+      if (activeProjection.type === 'quakes') {
+        const geojsonData: GeoJSON.FeatureCollection = {
+          type: "FeatureCollection",
+          features: activeProjection.data.map((q: any) => ({
+            type: "Feature",
+            geometry: {
+              type: "Point",
+              coordinates: [q.lon, q.lat]
+            },
+            properties: {
+              mag: q.magnitude,
+              place: q.place
+            }
+          }))
+        };
+
+        map.addSource("quakes", {
+          type: "geojson",
+          data: geojsonData
+        });
+
+        // Add circles for quakes
+        map.addLayer({
+          id: "quakes-layer",
+          type: "circle",
+          source: "quakes",
+          paint: {
+            "circle-radius": [
+              "interpolate",
+              ["linear"],
+              ["get", "mag"],
+              2, 6,
+              5, 20
+            ],
+            "circle-color": [
+              "step",
+              ["get", "mag"],
+              "#e6c875", // Yellow for small
+              4, "#c49a6c", // Orange for medium
+              5, "#d9a0a0"  // Red for large
+            ],
+            "circle-opacity": 0.8,
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "#ffffff"
+          }
+        });
+
+        // Add labels for magnitude
+        map.addLayer({
+          id: "quakes-labels",
+          type: "symbol",
+          source: "quakes",
+          layout: {
+            "text-field": ["to-string", ["get", "mag"]],
+            "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+            "text-size": 10
+          },
+          paint: {
+            "text-color": "#ffffff"
+          }
+        });
+      } else if (activeProjection.type === 'nature') {
+        const geojsonData: GeoJSON.FeatureCollection = {
+          type: "FeatureCollection",
+          features: activeProjection.data.map((s, i) => ({
+            type: "Feature",
+            geometry: {
+              type: "Point",
+              // Since GBIF gives us a count in a region, let's distribute them slightly around the center
+              // so they form a cluster-like visual representation
+              coordinates: [
+                center[0] + (Math.random() - 0.5) * 0.05, 
+                center[1] + (Math.random() - 0.5) * 0.05
+              ]
+            },
+            properties: {
+              name: s.vernacularName || s.scientificName,
+              count: s.count,
+              kingdom: s.kingdom
+            }
+          }))
+        };
+
+        map.addSource("nature", {
+          type: "geojson",
+          data: geojsonData
+        });
+
+        map.addLayer({
+          id: "nature-layer",
+          type: "circle",
+          source: "nature",
+          paint: {
+            "circle-radius": [
+              "interpolate",
+              ["linear"],
+              ["get", "count"],
+              1, 8,
+              100, 24
+            ],
+            "circle-color": "#93b399",
+            "circle-opacity": 0.6,
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff"
+          }
+        });
+
+        map.addLayer({
+          id: "nature-labels",
+          type: "symbol",
+          source: "nature",
+          layout: {
+            "text-field": ["get", "name"],
+            "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+            "text-size": 10,
+            "text-offset": [0, 1.5],
+            "text-anchor": "top"
+          },
+          paint: {
+            "text-color": "#2c3e30",
+            "text-halo-color": "#ffffff",
+            "text-halo-width": 1
+          }
+        });
+      }
+    };
+
+    if (map.isStyleLoaded()) {
+      setupProjections();
+    } else {
+      map.once('styledata', setupProjections);
+    }
+
+    return cleanupMap;
+  }, [activeProjection, currentStyle]);
 
   return (
     <>
       <div ref={containerRef} className="absolute inset-0" />
       
+      {/* Active Projection Indicator */}
+      {activeProjection && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 bg-background/90 backdrop-blur-md rounded-full shadow-md border border-border animate-fade-in-up">
+          <span className="relative flex h-2 w-2">
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${activeProjection.type === 'quakes' ? 'bg-pastel-red-text' : 'bg-pastel-green-text'}`}></span>
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${activeProjection.type === 'quakes' ? 'bg-pastel-red-text' : 'bg-pastel-green-text'}`}></span>
+          </span>
+          <span className="text-xs font-medium uppercase tracking-wider text-foreground">
+            {activeProjection.type === 'quakes' ? 'Activité sismique' : 'Biodiversité'}
+          </span>
+          <button 
+            onClick={() => setActiveProjection(null)}
+            className="ml-2 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <HugeiconsIcon icon={Cancel01Icon} size={14} />
+          </button>
+        </div>
+      )}
+
       {/* Layer Selector */}
       <div className="absolute top-4 right-4 z-10">
         <Popover>

@@ -7,6 +7,15 @@ import { reverseGeocode, type GeoResult } from "@/lib/geocoder";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { CompassIcon } from "@hugeicons/core-free-icons";
 
+// Type pour les données projetées sur la carte
+export type MapProjectionData = {
+  type: 'quakes';
+  data: any[];
+} | {
+  type: 'nature';
+  data: any[];
+} | null;
+
 export default function Index() {
   const [center, setCenter] = useState<[number, number]>([2.3522, 48.8566]);
   const [zoom] = useState(6);
@@ -16,9 +25,11 @@ export default function Index() {
   const [loading, setLoading] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lon: number }>({ lat: 48.8566, lon: 2.3522 });
+  const [projectionData, setProjectionData] = useState<MapProjectionData>(null);
 
   const loadWeather = useCallback(async (lat: number, lon: number, name?: string) => {
     setLoading(true);
+    setProjectionData(null); // Reset projection when loading new location
     try {
       const [data, resolvedName] = await Promise.all([
         fetchWeather(lat, lon),
@@ -55,7 +66,13 @@ export default function Index() {
 
   return (
     <div className="h-screen w-screen overflow-hidden relative">
-      <MapView center={center} zoom={zoom} onMapClick={handleMapClick} markerPosition={markerPos} />
+      <MapView 
+        center={center} 
+        zoom={zoom} 
+        onMapClick={handleMapClick} 
+        markerPosition={markerPos} 
+        projectionData={projectionData}
+      />
 
       {/* Search overlay */}
       <div className="absolute top-4 left-4 right-4 z-10 flex items-start gap-2 md:right-auto md:w-[400px]">
@@ -85,6 +102,7 @@ export default function Index() {
         locationName={locationName}
         lat={selectedCoords.lat}
         lon={selectedCoords.lon}
+        onProjectData={setProjectionData}
       />
 
       {/* Branding */}

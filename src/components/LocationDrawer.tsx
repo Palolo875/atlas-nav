@@ -21,8 +21,9 @@ import {
   Globe02Icon, Location01Icon, Alert02Icon,
   Leaf01Icon, ArrowRight01Icon, Cancel01Icon,
   FastWindIcon, DropletIcon, Sun03Icon,
-  Share01Icon, Bookmark02Icon, Search01Icon
+  Share01Icon, Bookmark02Icon, Search01Icon, MapViewIcon
 } from "@hugeicons/core-free-icons";
+import type { MapProjectionData } from "@/pages/Index";
 
 interface LocationDrawerProps {
   open: boolean;
@@ -31,12 +32,13 @@ interface LocationDrawerProps {
   locationName: string;
   lat: number;
   lon: number;
+  onProjectData: (data: MapProjectionData) => void;
 }
 
-type TabId = "meteo" | "explore" | "nature";
+type ViewId = "main" | "nature" | "quakes";
 
-export default function LocationDrawer({ open, onOpenChange, weather, locationName, lat, lon }: LocationDrawerProps) {
-  const [activeTab, setActiveTab] = useState<TabId>("meteo");
+export default function LocationDrawer({ open, onOpenChange, weather, locationName, lat, lon, onProjectData }: LocationDrawerProps) {
+  const [activeView, setActiveView] = useState<ViewId>("main");
   const [wiki, setWiki] = useState<WikiSummary | null>(null);
   const [photos, setPhotos] = useState<WikimediaPhoto[]>([]);
   const [country, setCountry] = useState<CountryInfo | null>(null);
@@ -49,6 +51,23 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
     () => (weather ? generateNarrative(weather, locationName) : []),
     [weather, locationName]
   );
+
+  // Generate a very short 1-2 sentence TLDR for the new hero section
+  const tldr = useMemo(() => {
+    if (!weather) return "";
+    const weatherDesc = getWeatherDescription(weather.current.weatherCode).toLowerCase();
+    const temp = Math.round(weather.current.temperature);
+    let text = `Météo ${weatherDesc} avec ${temp}°C actuellement.`;
+    
+    if (weather.airQuality && weather.airQuality.aqi > 100) {
+      text += " Attention à la qualité de l'air médiocre.";
+    } else if (quakes.length > 0 && quakes.some(q => q.magnitude > 4)) {
+      text += " Activité sismique notable dans la région.";
+    } else if (species.length > 0) {
+      text += ` Zone riche en biodiversité avec de nombreuses observations récentes.`;
+    }
+    return text;
+  }, [weather, quakes, species]);
 
   // Fetch enrichment data when drawer opens or location changes
   useEffect(() => {
@@ -71,15 +90,14 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
     ]).finally(() => setEnrichLoading(false));
   }, [open, lat, lon, locationName]);
 
+  // Reset view when location changes
+  useEffect(() => {
+    setActiveView("main");
+  }, [lat, lon]);
+
   if (!weather) return null;
 
   const { current } = weather;
-
-  const tabs: { id: TabId; label: string }[] = [
-    { id: "meteo", label: "Météo" },
-    { id: "explore", label: "Explorer" },
-    { id: "nature", label: "Nature" },
-  ];
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -92,8 +110,7 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
             <div className="min-w-0 flex-1">
               <DrawerTitle className="text-2xl font-serif truncate">{locationName}</DrawerTitle>
               <p className="text-xs text-muted-foreground font-mono mt-1">
-                {getWeatherDescription(current.weatherCode)}
-                {country && ` — ${country.subregion || country.region || country.name}`}
+                {country ? `${country.subregion || country.region || country.name}` : `${lat.toFixed(4)}, ${lon.toFixed(4)}`}
               </p>
             </div>
           </div>
@@ -166,52 +183,254 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
           </div>
         </div>
 
-        {/* Tab bar */}
-        <div className="flex border-b border-border px-5">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`relative px-4 py-2.5 text-xs uppercase tracking-widest transition-colors ${
-                activeTab === tab.id
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {tab.label}
-              {activeTab === tab.id && (
-                <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-foreground rounded-full" />
-              )}
-            </button>
-          ))}
-        </div>
+        {/* Main scrollable content area */}
+        <div className="overflow-y-auto flex-1 overscroll-contain pb-8" style={{ maxHeight: "calc(92vh - 200px)" }}>
+          {activeView === "main" && (
+            <div className="animate-fade-in-up">
+              {/* TLDR Narrative block */}
+              <div className="px-5 mb-6">
+                <div className="bg-secondary/50 rounded-xl p-4 border border-border">
+                  <p className="text-sm leading-relaxed text-foreground/90 font-medium">
+                    {tldr}
+                  </p>
+                </div>
+              </div>
 
-        {/* Tab content */}
-        <div className="overflow-y-auto flex-1 overscroll-contain" style={{ maxHeight: "calc(92vh - 220px)" }}>
-          {activeTab === "meteo" && (
-            <MeteoTab weather={weather} narrative={narrative} />
+              {/* Story Carousel (Replaces Tabs) */}
+              <div className="mb-2">
+                <StoryCarousel 
+                  quakes={quakes} 
+                  species={species} 
+                  wiki={wiki} 
+                  onSelectStory={(id) => {
+                    if (id === 'nature') setActiveView('nature');
+                    else if (id === 'quakes') setActiveView('quakes');
+                    else if (id === 'wiki' && wiki?.url) window.open(wiki.url, '_blank');
+                  }} 
+                />
+              </div>
+
+              {/* Weather Narrative Cards */}
+              <div className="px-5 pt-4 pb-2">
+                <SectionTitle>Analyse contextuelle</SectionTitle>
+                {narrative.map((insight, i) => (
+                  <NarrativeCard key={insight.category + i} insight={insight} index={i} />
+                ))}
+              </div>
+
+              {/* Weather Forecasts */}
+              <div className="px-5 pt-4 pb-2 border-t border-border">
+                <SectionTitle>Prochaines heures</SectionTitle>
+                <HourlyForecast hourly={weather.hourly} />
+              </div>
+              <div className="px-5 pt-4 pb-4 border-t border-border">
+                <SectionTitle>7 prochains jours</SectionTitle>
+                <DailyForecast daily={weather.daily} />
+              </div>
+
+              {/* Metrics Bento */}
+              <div className="px-5 pb-4 border-t border-border pt-4">
+                <SectionTitle>Données détaillées</SectionTitle>
+                <div className="grid grid-cols-2 gap-px bg-border rounded-lg overflow-hidden">
+                  <MetricCell label="Pression" value={`${current.pressure.toFixed(0)} hPa`} />
+                  <MetricCell label="Visibilité" value={`${(current.visibility / 1000).toFixed(1)} km`} />
+                  <MetricCell label="Point de rosée" value={`${current.dewPoint.toFixed(1)}°C`} />
+                  <MetricCell label="Couverture nuageuse" value={`${current.cloudCover}%`} />
+                  <MetricCell label="UV Index" value={current.uvIndex.toFixed(1)} />
+                  <MetricCell label="Altitude" value={`${weather.elevation.toFixed(0)}m`} />
+                  {weather.airQuality && (
+                    <>
+                      <MetricCell label="AQI" value={weather.airQuality.aqi.toString()} />
+                      <MetricCell label="PM2.5" value={`${weather.airQuality.pm25.toFixed(1)} µg/m³`} />
+                      <MetricCell label="PM10" value={`${weather.airQuality.pm10.toFixed(1)} µg/m³`} />
+                      <MetricCell label="NO2" value={`${weather.airQuality.no2.toFixed(1)} µg/m³`} />
+                      <MetricCell label="Ozone" value={`${weather.airQuality.o3.toFixed(1)} µg/m³`} />
+                      <MetricCell label="SO2" value={`${weather.airQuality.so2.toFixed(1)} µg/m³`} />
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Ephemeris */}
+              <div className="px-5 pb-6 border-t border-border pt-4">
+                <SectionTitle>Éphémérides</SectionTitle>
+                <div className="flex gap-4 text-sm font-mono text-muted-foreground">
+                  <div>
+                    <span className="text-[10px] uppercase tracking-widest block mb-1">Lever</span>
+                    <span className="text-foreground">{formatTime(weather.daily.sunrise[0])}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase tracking-widest block mb-1">Coucher</span>
+                    <span className="text-foreground">{formatTime(weather.daily.sunset[0])}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Wikipedia block directly in main flow if available */}
+              {wiki && (
+                <div className="px-5 pt-4 pb-4 border-t border-border">
+                  <SectionTitle icon={BookOpen01Icon}>Encyclopédie</SectionTitle>
+                  <h3 className="text-base font-serif mb-1">
+                    {wiki.title}
+                    {wiki.title.toLowerCase() !== locationName.toLowerCase() && !wiki.title.toLowerCase().includes(locationName.toLowerCase()) && (
+                      <span className="ml-2 text-[10px] font-mono font-normal text-muted-foreground bg-secondary px-1.5 py-0.5 rounded uppercase tracking-wider align-middle">
+                        À proximité
+                      </span>
+                    )}
+                  </h3>
+                  {wiki.description && (
+                    <p className="text-[11px] text-muted-foreground font-mono mb-2">{wiki.description}</p>
+                  )}
+                  <p className="text-sm text-foreground leading-relaxed">{wiki.extract}</p>
+                  {wiki.url && (
+                    <a
+                      href={wiki.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 mt-3 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Lire sur Wikipedia
+                      <HugeiconsIcon icon={ArrowRight01Icon} size={12} />
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
           )}
-          {activeTab === "explore" && (
-            <ExploreTab
-              wiki={wiki}
-              photos={photos}
-              country={country}
-              pois={pois}
-              quakes={quakes}
-              species={species}
-              lat={lat}
-              lon={lon}
-              locationName={locationName}
-              loading={enrichLoading}
-              setActiveTab={setActiveTab}
-            />
+
+          {activeView === "nature" && (
+            <div className="animate-fade-in-up">
+              <div className="px-5 py-3 border-b border-border flex items-center justify-between sticky top-0 bg-background z-10">
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => setActiveView("main")}
+                    className="p-1.5 -ml-1.5 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <HugeiconsIcon icon={ArrowRight01Icon} size={18} className="rotate-180" />
+                  </button>
+                  <h2 className="text-lg font-serif">Biodiversité locale</h2>
+                </div>
+                <button
+                  onClick={() => {
+                    onProjectData({ type: 'nature', data: species });
+                    onOpenChange(false);
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-medium text-pastel-green-text bg-pastel-green-bg px-3 py-1.5 rounded-full hover:opacity-80 transition-opacity"
+                >
+                  <HugeiconsIcon icon={MapViewIcon} size={14} />
+                  Voir sur la carte
+                </button>
+              </div>
+              <NatureTab species={species} loading={enrichLoading} />
+            </div>
           )}
-          {activeTab === "nature" && (
-            <NatureTab species={species} loading={enrichLoading} />
+
+          {activeView === "quakes" && (
+            <div className="animate-fade-in-up">
+              <div className="px-5 py-3 border-b border-border flex items-center justify-between sticky top-0 bg-background z-10">
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => setActiveView("main")}
+                    className="p-1.5 -ml-1.5 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <HugeiconsIcon icon={ArrowRight01Icon} size={18} className="rotate-180" />
+                  </button>
+                  <h2 className="text-lg font-serif">Activité sismique</h2>
+                </div>
+                <button
+                  onClick={() => {
+                    onProjectData({ type: 'quakes', data: quakes });
+                    onOpenChange(false);
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-medium text-pastel-red-text bg-pastel-red-bg px-3 py-1.5 rounded-full hover:opacity-80 transition-opacity"
+                >
+                  <HugeiconsIcon icon={MapViewIcon} size={14} />
+                  Voir sur la carte
+                </button>
+              </div>
+              <QuakesTab quakes={quakes} />
+            </div>
           )}
         </div>
       </DrawerContent>
     </Drawer>
+  );
+}
+
+// ─── Quakes Detail View ──────────────────────────────────────────────
+function QuakesTab({ quakes }: { quakes: Earthquake[] }) {
+  // Process for timeline chart
+  const chartData = useMemo(() => {
+    return quakes.map(q => ({
+      time: new Date(q.time).toLocaleDateString("fr-FR", { day: 'numeric', month: 'short' }),
+      magnitude: q.magnitude,
+      place: q.place.split(' of ').pop() || q.place // shorten place names
+    })).reverse(); // chronological
+  }, [quakes]);
+
+  return (
+    <div className="pb-8">
+      <div className="px-5 pt-4 pb-4">
+        <p className="text-sm leading-relaxed text-foreground/90 mb-6">
+          <span className="font-semibold text-pastel-red-text">{quakes.length} séismes</span> ont été enregistrés dans un rayon de 300km au cours des 30 derniers jours.
+        </p>
+
+        {quakes.length > 0 && (
+          <div className="mb-8 h-[160px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                <XAxis 
+                  dataKey="time" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontFamily: "monospace" }} 
+                  dy={10}
+                />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontFamily: "monospace" }} 
+                  domain={[0, Math.ceil(Math.max(...quakes.map(q => q.magnitude)))]}
+                />
+                <Bar dataKey="magnitude" radius={[4, 4, 0, 0]} maxBarSize={30}>
+                  {chartData.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.magnitude >= 5 ? "hsl(var(--pastel-red-text))" : entry.magnitude >= 3 ? "hsl(var(--pastel-yellow-text))" : "hsl(var(--muted-foreground))"} 
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        <SectionTitle icon={Alert02Icon}>Historique détaillé</SectionTitle>
+        <div className="space-y-0">
+          {quakes.map((q, i) => (
+            <a
+              key={i}
+              href={q.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between py-2 border-b border-border last:border-0 hover:bg-secondary transition-colors -mx-2 px-2 rounded"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-foreground truncate">{q.place}</p>
+                <p className="text-[10px] text-muted-foreground font-mono">
+                  {new Date(q.time).toLocaleDateString("fr-FR")} — {q.distance} km
+                </p>
+              </div>
+              <span className={`shrink-0 ml-2 font-mono text-sm font-medium ${
+                q.magnitude >= 5 ? "text-pastel-red-text" : q.magnitude >= 3 ? "text-pastel-yellow-text" : "text-muted-foreground"
+              }`}>
+                M{q.magnitude.toFixed(1)}
+              </span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -575,43 +794,48 @@ function NatureTab({ species, loading }: { species: GBIFSpecies[]; loading: bool
 // ─── Shared primitives ───────────────────────────────────────────────
 function SectionTitle({ children, icon }: { children: React.ReactNode; icon?: any }) {
   return (
-    <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-widest text-muted-foreground mb-3">
-      {icon && <HugeiconsIcon icon={icon} size={13} />}
+    <h2 className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground mb-3">
+      {icon && <HugeiconsIcon icon={icon} size={12} />}
       {children}
     </h2>
   );
 }
 
-function MetricCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-card p-3">
-      <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</p>
-      <p className="text-sm font-mono mt-1 text-foreground">{value}</p>
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  if (!value) return null;
-  return (
-    <div className="flex items-baseline gap-2">
-      <span className="text-[10px] uppercase tracking-widest text-muted-foreground shrink-0 w-20">{label}</span>
-      <span className="text-sm text-foreground">{value}</span>
-    </div>
-  );
-}
-
-function formatTime(iso: string): string {
+function formatTime(isoOrTimestamp: string | number): string {
   try {
-    return new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    if (typeof isoOrTimestamp === "number") {
+      return new Date(isoOrTimestamp * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    }
+    return new Date(isoOrTimestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
   } catch {
     return "";
   }
 }
 
-function formatPopulation(n: number): string {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)} Mrd`;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)} K`;
-  return n.toString();
+function MetricCell({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="bg-card p-3">
+      <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">{label}</p>
+      <p className="font-mono text-sm">{value}</p>
+    </div>
+  );
 }
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between py-1.5 border-b border-border last:border-0">
+      <span className="text-[10px] uppercase tracking-widest text-muted-foreground mt-0.5">{label}</span>
+      <span className="text-right flex-1 ml-4 text-sm font-medium">{value}</span>
+    </div>
+  );
+}
+
+function formatPopulation(num: number): string {
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + " M";
+  if (num >= 1000) return (num / 1000).toFixed(1) + " k";
+  return num.toString();
+}
+
+
+
+
