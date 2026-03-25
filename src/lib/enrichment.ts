@@ -64,7 +64,9 @@ export async function fetchWikimediaPhotos(lat: number, lon: number, limit = 6):
     const files = data?.query?.geosearch || [];
 
     const photos: WikimediaPhoto[] = [];
+    const filterRegex = /(marathon|course|sign|logo|map|flag|flagge|carte|panneau|blason|icon)/i;
     for (const file of files) {
+      if (filterRegex.test(file.title)) continue;
       try {
         const infoRes = await fetch(
           `https://commons.wikimedia.org/w/api.php?action=query&titles=${encodeURIComponent(file.title)}&prop=imageinfo&iiprop=url|thumbmime&iiurlwidth=400&format=json&origin=*`
@@ -122,7 +124,17 @@ export async function fetchCountryInfo(lat: number, lon: number): Promise<Countr
     if (!res.ok) return null;
     const c = await res.json();
 
-    const langs = c.languages ? Object.values(c.languages) as string[] : [];
+    const langNames = new Intl.DisplayNames(['fr'], { type: 'language' });
+    const langs = c.languages 
+      ? Object.keys(c.languages).map(code => {
+          try {
+            // ISO 639-3 to ISO 639-1 if needed, but Intl.DisplayNames handles many 3-letter codes
+            return langNames.of(code) || c.languages[code];
+          } catch {
+            return c.languages[code];
+          }
+        })
+      : [];
     const currs = c.currencies
       ? Object.entries(c.currencies).map(([code, v]: [string, any]) => ({
           code,
@@ -267,6 +279,20 @@ export interface GBIFSpecies {
   count: number;
 }
 
+const translateTaxonomy = (kingdom: string, className: string) => {
+  if (className === "Aves") return "Oiseaux";
+  if (className === "Mammalia") return "Mammifères";
+  if (className === "Insecta") return "Insectes";
+  if (className === "Magnoliopsida") return "Plantes à fleurs";
+  if (className === "Amphibia") return "Amphibiens";
+  if (className === "Reptilia") return "Reptiles";
+  if (className === "Gastropoda" || className === "Bivalvia") return "Mollusques";
+  if (kingdom === "Plantae") return "Plantes";
+  if (kingdom === "Fungi") return "Champignons";
+  if (kingdom === "Animalia") return "Animaux";
+  return kingdom || "Inconnu";
+};
+
 export async function fetchGBIFSpecies(lat: number, lon: number): Promise<GBIFSpecies[]> {
   try {
     const res = await fetch(
@@ -284,7 +310,7 @@ export async function fetchGBIFSpecies(lat: number, lon: number): Promise<GBIFSp
         speciesMap.set(key, {
           scientificName: r.species,
           vernacularName: r.vernacularName || "",
-          kingdom: r.kingdom || "",
+          kingdom: translateTaxonomy(r.kingdom, r.class),
           count: 1,
         });
       }

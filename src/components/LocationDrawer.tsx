@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from "@/components/ui/drawer";
 import type { WeatherData } from "@/lib/weather";
 import { getWeatherDescription, getWindDirection } from "@/lib/weather";
 import { generateNarrative } from "@/lib/narrative";
@@ -13,12 +13,15 @@ import {
 import NarrativeCard from "./NarrativeCard";
 import HourlyForecast from "./HourlyForecast";
 import DailyForecast from "./DailyForecast";
+import StoryCarousel from "./StoryCarousel";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell } from "recharts";
 import {
   Navigation03Icon, BookOpen01Icon, Image01Icon,
   Globe02Icon, Location01Icon, Alert02Icon,
-  Leaf01Icon, ArrowRight01Icon,
+  Leaf01Icon, ArrowRight01Icon, Cancel01Icon,
   FastWindIcon, DropletIcon, Sun03Icon,
+  Share01Icon, Bookmark02Icon, Search01Icon
 } from "@hugeicons/core-free-icons";
 
 interface LocationDrawerProps {
@@ -81,24 +84,17 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="max-h-[92vh] outline-none">
-        <DrawerHeader className="pb-0 px-5">
-          <div className="flex items-start justify-between">
+        <DrawerHeader className="pb-0 px-5 relative">
+          <DrawerClose className="absolute right-5 top-1 p-2 rounded-full hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground">
+            <HugeiconsIcon icon={Cancel01Icon} size={16} />
+          </DrawerClose>
+          <div className="flex items-start justify-between pr-8">
             <div className="min-w-0 flex-1">
               <DrawerTitle className="text-2xl font-serif truncate">{locationName}</DrawerTitle>
               <p className="text-xs text-muted-foreground font-mono mt-1">
-                {getWeatherDescription(current.weatherCode)} — {lat.toFixed(4)}, {lon.toFixed(4)}
+                {getWeatherDescription(current.weatherCode)}
+                {country && ` — ${country.subregion || country.region || country.name}`}
               </p>
-            </div>
-            <div className="flex gap-1.5 ml-3 shrink-0 mt-1">
-              <a
-                href={generateGoogleMapsLink(lat, lon)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <HugeiconsIcon icon={Navigation03Icon} size={12} />
-                Itinéraire
-              </a>
             </div>
           </div>
         </DrawerHeader>
@@ -122,6 +118,51 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
               <HugeiconsIcon icon={FastWindIcon} size={11} />
               {current.windSpeed.toFixed(0)} km/h {getWindDirection(current.windDirection)}
             </span>
+          </div>
+        </div>
+
+        {/* Action Pills */}
+        <div className="px-5 pb-4">
+          <div className="flex gap-2 overflow-x-auto hide-scrollbar snap-x">
+            <a
+              href={generateGoogleMapsLink(lat, lon)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="snap-start shrink-0 flex items-center gap-1.5 rounded-full border border-border bg-transparent px-3 py-1.5 text-[10px] uppercase tracking-widest text-foreground hover:bg-secondary transition-colors"
+            >
+              <HugeiconsIcon icon={Navigation03Icon} size={12} />
+              Itinéraire
+            </a>
+            <button
+              onClick={() => {
+                if (navigator.share) {
+                  navigator.share({
+                    title: locationName,
+                    text: `Découvrez ${locationName} sur Atlas Nav.`,
+                    url: window.location.href,
+                  }).catch(() => {});
+                }
+              }}
+              className="snap-start shrink-0 flex items-center gap-1.5 rounded-full border border-border bg-transparent px-3 py-1.5 text-[10px] uppercase tracking-widest text-foreground hover:bg-secondary transition-colors"
+            >
+              <HugeiconsIcon icon={Share01Icon} size={12} />
+              Partager
+            </button>
+            <button className="snap-start shrink-0 flex items-center gap-1.5 rounded-full border border-border bg-transparent px-3 py-1.5 text-[10px] uppercase tracking-widest text-foreground hover:bg-secondary transition-colors">
+              <HugeiconsIcon icon={Bookmark02Icon} size={12} />
+              Enregistrer
+            </button>
+            {wiki?.url && (
+              <a
+                href={wiki.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="snap-start shrink-0 flex items-center gap-1.5 rounded-full border border-border bg-transparent px-3 py-1.5 text-[10px] uppercase tracking-widest text-foreground hover:bg-secondary transition-colors"
+              >
+                <HugeiconsIcon icon={BookOpen01Icon} size={12} />
+                Wikipedia
+              </a>
+            )}
           </div>
         </div>
 
@@ -157,10 +198,12 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
               country={country}
               pois={pois}
               quakes={quakes}
+              species={species}
               lat={lat}
               lon={lon}
               locationName={locationName}
               loading={enrichLoading}
+              setActiveTab={setActiveTab}
             />
           )}
           {activeTab === "nature" && (
@@ -240,17 +283,19 @@ function MeteoTab({ weather, narrative }: { weather: WeatherData; narrative: any
 
 // ─── Explorer Tab ────────────────────────────────────────────────────
 function ExploreTab({
-  wiki, photos, country, pois, quakes, lat, lon, locationName, loading,
+  wiki, photos, country, pois, quakes, species, lat, lon, locationName, loading, setActiveTab
 }: {
   wiki: WikiSummary | null;
   photos: WikimediaPhoto[];
   country: CountryInfo | null;
   pois: NearbyPOI[];
   quakes: Earthquake[];
+  species: GBIFSpecies[];
   lat: number;
   lon: number;
   locationName: string;
   loading: boolean;
+  setActiveTab: (tab: TabId) => void;
 }) {
   return (
     <div className="pb-8">
@@ -258,6 +303,21 @@ function ExploreTab({
         <div className="px-5 py-6 flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-foreground animate-pulse" />
           <span className="text-xs text-muted-foreground">Enrichissement en cours...</span>
+        </div>
+      )}
+
+      {!loading && (
+        <div className="pt-4">
+          <StoryCarousel 
+            quakes={quakes} 
+            species={species} 
+            wiki={wiki} 
+            onSelectStory={(id) => {
+              if (id === 'nature') setActiveTab('nature');
+              if (id === 'wiki' && wiki?.url) window.open(wiki.url, '_blank');
+              // quakes could open a new view, for now it scrolls to quakes or does nothing
+            }} 
+          />
         </div>
       )}
 
@@ -273,7 +333,14 @@ function ExploreTab({
               loading="lazy"
             />
           )}
-          <h3 className="text-base font-serif mb-1">{wiki.title}</h3>
+          <h3 className="text-base font-serif mb-1">
+            {wiki.title}
+            {wiki.title.toLowerCase() !== locationName.toLowerCase() && !wiki.title.toLowerCase().includes(locationName.toLowerCase()) && (
+              <span className="ml-2 text-[10px] font-mono font-normal text-muted-foreground bg-secondary px-1.5 py-0.5 rounded uppercase tracking-wider align-middle">
+                À proximité
+              </span>
+            )}
+          </h3>
           {wiki.description && (
             <p className="text-[11px] text-muted-foreground font-mono mb-2">{wiki.description}</p>
           )}
@@ -327,7 +394,7 @@ function ExploreTab({
             </div>
           </div>
           <div className="space-y-2 text-sm">
-            <InfoRow label="Parlez" value={country.languages.join(", ")} />
+            <InfoRow label="Langue" value={country.languages.join(", ")} />
             <InfoRow
               label="Devises"
               value={country.currencies.map((c) => `${c.name} (${c.symbol})`).join(", ")}
@@ -425,6 +492,20 @@ function ExploreTab({
 
 // ─── Nature Tab ──────────────────────────────────────────────────────
 function NatureTab({ species, loading }: { species: GBIFSpecies[]; loading: boolean }) {
+  // Aggregate by kingdom for the chart
+  const distribution = useMemo(() => {
+    const counts: Record<string, number> = {};
+    species.forEach(s => {
+      counts[s.kingdom] = (counts[s.kingdom] || 0) + s.count;
+    });
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+  }, [species]);
+
+  const COLORS = ['#93b399', '#c49a6c', '#e6c875', '#aeb4b7', '#d9a0a0']; // Pastel semantic colors
+
   return (
     <div className="pb-8">
       <div className="px-5 pt-4 pb-4">
@@ -438,6 +519,30 @@ function NatureTab({ species, loading }: { species: GBIFSpecies[]; loading: bool
         {!loading && species.length === 0 && (
           <p className="text-sm text-muted-foreground py-4">Aucune observation enregistrée dans cette zone.</p>
         )}
+        
+        {!loading && species.length > 0 && (
+          <div className="mb-6 mt-4 h-[120px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={distribution} layout="vertical" margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                <XAxis type="number" hide />
+                <YAxis 
+                  dataKey="name" 
+                  type="category" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontFamily: "monospace" }} 
+                  width={80}
+                />
+                <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={12}>
+                  {distribution.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
         {species.length > 0 && (
           <div className="space-y-0">
             {species.map((s, i) => (

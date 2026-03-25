@@ -62,10 +62,10 @@ export default function Index() {
         <SearchBar onSelect={handleSearchSelect} />
         <button
           onClick={handleGeolocate}
-          className="shrink-0 flex items-center justify-center w-10 h-10 rounded-lg border border-overlay-border bg-overlay shadow-subtle hover:bg-secondary transition-colors"
+          className="shrink-0 flex items-center justify-center w-[44px] h-[44px] rounded-xl border border-border/50 bg-background/90 backdrop-blur-md shadow-sm hover:bg-secondary hover:shadow-md transition-all"
           title="Ma position"
         >
-          <HugeiconsIcon icon={CompassIcon} size={16} className="text-foreground" />
+          <HugeiconsIcon icon={CompassIcon} size={18} className="text-foreground" />
         </button>
       </div>
 

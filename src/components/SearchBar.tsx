@@ -51,7 +51,7 @@ export default function SearchBar({ onSelect }: SearchBarProps) {
 
   return (
     <div className="relative w-full max-w-md">
-      <div className="flex items-center gap-2 rounded-lg border border-overlay-border bg-overlay px-3 py-2.5 shadow-subtle transition-all focus-within:border-foreground/20">
+      <div className="flex items-center gap-2 rounded-xl border border-border/50 bg-background/90 backdrop-blur-md px-3 py-2.5 shadow-sm transition-all focus-within:border-foreground/20 focus-within:shadow-md">
         <HugeiconsIcon icon={Search01Icon} size={16} className="text-muted-foreground shrink-0" />
         <input
           ref={inputRef}
@@ -70,7 +70,7 @@ export default function SearchBar({ onSelect }: SearchBarProps) {
       </div>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-overlay-border bg-overlay shadow-subtle overflow-hidden z-50">
+        <div className="absolute top-full left-0 right-0 mt-2 rounded-xl border border-border/50 bg-background/95 backdrop-blur-xl shadow-lg overflow-hidden z-50">
           {results.map((r, i) => (
             <button
               key={`${r.lat}-${r.lon}-${i}`}
