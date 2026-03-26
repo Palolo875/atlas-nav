@@ -7,6 +7,8 @@ import { reverseGeocode, type GeoResult } from "@/lib/geocoder";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { CompassIcon } from "@hugeicons/core-free-icons";
 
+import type { Earthquake, GBIFSpecies } from "@/lib/enrichment";
+
 export default function Index() {
   const [center, setCenter] = useState<[number, number]>([2.3522, 48.8566]);
   const [zoom] = useState(6);
@@ -17,7 +19,7 @@ export default function Index() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lon: number }>({ lat: 48.8566, lon: 2.3522 });
   const [activeLayer, setActiveLayer] = useState<"none" | "quakes" | "nature">("none");
-  const [mapData, setMapData] = useState<{ quakes: any[], nature: any[] }>({ quakes: [], nature: [] });
+  const [mapData, setMapData] = useState<{ quakes: Earthquake[], nature: GBIFSpecies[] }>({ quakes: [], nature: [] });
 
   const loadWeather = useCallback(async (lat: number, lon: number, name?: string) => {
     setLoading(true);

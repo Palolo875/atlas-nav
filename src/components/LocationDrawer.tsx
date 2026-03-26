@@ -12,10 +12,14 @@ import {
 } from "@/lib/enrichment";
 import NarrativeCard from "./NarrativeCard";
 import HourlyForecast from "./HourlyForecast";
+import TemperatureArea from "./TemperatureArea";
 import DailyForecast from "./DailyForecast";
 import StoryCarousel from "./StoryCarousel";
+import OrganicDonut from "./OrganicDonut";
+import GaugeArc from "./GaugeArc";
+import BeeswarmPlot from "./BeeswarmPlot";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip } from "recharts";
 import {
   Navigation03Icon, BookOpen01Icon, Image01Icon,
   Globe02Icon, Location01Icon, Alert02Icon,
@@ -34,7 +38,7 @@ interface LocationDrawerProps {
   onLayerSelect?: (layer: "none" | "quakes" | "nature", data?: any) => void;
 }
 
-type TabId = "explore" | "meteo" | "nature" | "quakes";
+type TabId = "explore" | "meteo" | "nature" | "quakes" | "history";
 
 export default function LocationDrawer({ open, onOpenChange, weather, locationName, lat, lon, onLayerSelect }: LocationDrawerProps) {
   const [activeTab, setActiveTab] = useState<TabId>("explore");
@@ -90,9 +94,9 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
                 setActiveTab('explore');
                 onLayerSelect?.('none');
               }}
-              className="flex items-center gap-1 text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors bg-background/80 backdrop-blur px-3 py-1.5 rounded-full border border-border shadow-sm"
+              className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-foreground bg-background/90 backdrop-blur-md px-3 py-2 rounded-xl border border-border shadow-sm hover:bg-secondary transition-all"
             >
-              <HugeiconsIcon icon={ArrowRight01Icon} size={12} className="rotate-180" />
+              <HugeiconsIcon icon={ArrowRight01Icon} size={14} className="rotate-180" />
               Retour
             </button>
           </div>
@@ -172,17 +176,15 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
               <HugeiconsIcon icon={Bookmark02Icon} size={12} />
               Enregistrer
             </button>
-            {wiki?.url && (
-              <a
-                href={wiki.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="snap-start shrink-0 flex items-center gap-1.5 rounded-full border border-border bg-transparent px-3 py-1.5 text-[10px] uppercase tracking-widest text-foreground hover:bg-secondary transition-colors"
-              >
-                <HugeiconsIcon icon={BookOpen01Icon} size={12} />
-                Wikipedia
-              </a>
-              )}
+          {wiki?.url && activeTab === 'explore' && (
+            <button
+              onClick={() => setActiveTab('history')}
+              className="snap-start shrink-0 flex items-center gap-1.5 rounded-full border border-border bg-transparent px-3 py-1.5 text-[10px] uppercase tracking-widest text-foreground hover:bg-secondary transition-colors"
+            >
+              <HugeiconsIcon icon={BookOpen01Icon} size={12} />
+              Histoire
+            </button>
+          )}
             </div>
           </div>
         </div>
@@ -227,6 +229,9 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
               }}
             />
           )}
+          {activeTab === "history" && (
+            <HistoryTab wiki={wiki} locationName={locationName} />
+          )}
         </div>
       </DrawerContent>
     </Drawer>
@@ -238,10 +243,10 @@ function MeteoTab({ weather }: { weather: WeatherData }) {
   const { current } = weather;
   return (
     <div className="pb-8 animate-fade-in-up">
-      {/* Hourly */}
+      {/* Hourly / Temperature Area */}
       <div className="px-5 pt-4 pb-2">
-        <SectionTitle>Prochaines heures</SectionTitle>
-        <HourlyForecast hourly={weather.hourly} />
+        <SectionTitle>Évolution (24h)</SectionTitle>
+        <TemperatureArea hourly={weather.hourly} />
       </div>
 
       {/* Daily */}
@@ -250,19 +255,51 @@ function MeteoTab({ weather }: { weather: WeatherData }) {
         <DailyForecast daily={weather.daily} />
       </div>
 
+      {/* Gauges for UV and AQI */}
+      <div className="px-5 pt-4 pb-4 border-t border-border">
+        <SectionTitle>Qualité de l'environnement</SectionTitle>
+        <div className="flex justify-around items-end mt-6 mb-4">
+          <GaugeArc 
+            value={current.uvIndex} 
+            min={0} 
+            max={11} 
+            label="Index UV" 
+            size={130}
+            colorStops={[
+              { offset: "0%", color: "#93b399" }, // Low
+              { offset: "50%", color: "#e6c875" }, // Moderate/High
+              { offset: "100%", color: "#d9a0a0" } // Very High/Extreme
+            ]}
+          />
+          
+          {weather.airQuality && (
+            <GaugeArc 
+              value={weather.airQuality.aqi} 
+              min={0} 
+              max={100} 
+              label="AQI" 
+              size={130}
+              colorStops={[
+                { offset: "0%", color: "#93b399" }, // Good
+                { offset: "50%", color: "#e6c875" }, // Moderate
+                { offset: "100%", color: "#d9a0a0" } // Unhealthy
+              ]}
+            />
+          )}
+        </div>
+      </div>
+
       {/* Metrics bento */}
-      <div className="px-5 pb-4 border-t border-border pt-4">
+      <div className="px-5 pb-4 pt-4 border-t border-border">
         <SectionTitle>Données détaillées</SectionTitle>
-        <div className="grid grid-cols-2 gap-px bg-border rounded-lg overflow-hidden">
+        <div className="grid grid-cols-2 gap-2 mt-4">
           <MetricCell label="Pression" value={`${current.pressure.toFixed(0)} hPa`} />
           <MetricCell label="Visibilité" value={`${(current.visibility / 1000).toFixed(1)} km`} />
           <MetricCell label="Point de rosée" value={`${current.dewPoint.toFixed(1)}°C`} />
           <MetricCell label="Couverture nuageuse" value={`${current.cloudCover}%`} />
-          <MetricCell label="UV Index" value={current.uvIndex.toFixed(1)} />
           <MetricCell label="Altitude" value={`${weather.elevation.toFixed(0)}m`} />
           {weather.airQuality && (
             <>
-              <MetricCell label="AQI" value={weather.airQuality.aqi.toString()} />
               <MetricCell label="PM2.5" value={`${weather.airQuality.pm25.toFixed(1)} µg/m³`} />
               <MetricCell label="PM10" value={`${weather.airQuality.pm10.toFixed(1)} µg/m³`} />
               <MetricCell label="NO2" value={`${weather.airQuality.no2.toFixed(1)} µg/m³`} />
@@ -311,13 +348,13 @@ function ExploreTab({
 }) {
   return (
     <div className="pb-8">
-      {/* Narrative Hub (Moved from Meteo) */}
+      {/* Narrative Hub */}
       <div className="px-5 pt-4 pb-2 border-t border-border">
         <div className="flex items-center justify-between mb-3">
           <SectionTitle className="mb-0">Analyse contextuelle</SectionTitle>
           <button 
             onClick={() => setActiveTab('meteo')}
-            className="text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 bg-secondary px-3 py-1.5 rounded-full border border-border shadow-sm"
+            className="text-[10px] uppercase tracking-widest text-foreground hover:text-background transition-colors flex items-center gap-1 bg-secondary hover:bg-foreground px-3 py-1.5 rounded-full border border-border shadow-sm"
           >
             Détails météo
             <HugeiconsIcon icon={ArrowRight01Icon} size={10} />
@@ -344,63 +381,28 @@ function ExploreTab({
             onSelectStory={(id) => {
               if (id === 'nature') setActiveTab('nature');
               if (id === 'quakes') setActiveTab('quakes');
-              if (id === 'wiki' && wiki?.url) window.open(wiki.url, '_blank');
+              if (id === 'wiki') setActiveTab('history');
             }} 
           />
         </div>
       )}
 
-      {/* Wikipedia */}
-      {wiki && (
-        <div className="px-5 pt-4 pb-4 border-b border-border animate-fade-in-up">
-          <SectionTitle icon={BookOpen01Icon}>Encyclopédie</SectionTitle>
-          {wiki.thumbnail && (
-            <img
-              src={wiki.thumbnail}
-              alt={wiki.title}
-              className="w-full h-40 object-cover rounded-lg mb-3"
-              loading="lazy"
-            />
-          )}
-          <h3 className="text-base font-serif mb-1">
-            {wiki.title}
-            {wiki.title.toLowerCase() !== locationName.toLowerCase() && !wiki.title.toLowerCase().includes(locationName.toLowerCase()) && (
-              <span className="ml-2 text-[10px] font-mono font-normal text-muted-foreground bg-secondary px-1.5 py-0.5 rounded uppercase tracking-wider align-middle">
-                À proximité
-              </span>
-            )}
-          </h3>
-          {wiki.description && (
-            <p className="text-[11px] text-muted-foreground font-mono mb-2">{wiki.description}</p>
-          )}
-          <p className="text-sm text-foreground leading-relaxed">{wiki.extract}</p>
-          {wiki.url && (
-            <a
-              href={wiki.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 mt-3 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Lire sur Wikipedia
-              <HugeiconsIcon icon={ArrowRight01Icon} size={12} />
-            </a>
-          )}
-        </div>
-      )}
-
+      {/* Wikipedia snippet removed from ExploreTab, moved to HistoryTab, replaced by story card */}
+      
       {/* Wikimedia Photos */}
       {photos.length > 0 && (
         <div className="px-5 pt-4 pb-4 border-b border-border animate-fade-in-up" style={{ animationDelay: "80ms" }}>
           <SectionTitle icon={Image01Icon}>Photos du lieu</SectionTitle>
-          <div className="grid grid-cols-3 gap-1.5 rounded-lg overflow-hidden">
+          <div className="grid grid-cols-3 gap-2 rounded-xl overflow-hidden">
             {photos.map((p, i) => (
-              <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="block">
+              <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="block relative group">
                 <img
                   src={p.thumbUrl}
                   alt={p.title}
-                  className="w-full h-24 object-cover hover:opacity-80 transition-opacity"
+                  className="w-full h-24 object-cover transition-transform duration-500 group-hover:scale-105"
                   loading="lazy"
                 />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
               </a>
             ))}
           </div>
@@ -465,7 +467,7 @@ function ExploreTab({
       {/* Navigation delegation */}
       <div className="px-5 pt-4 pb-4 animate-fade-in-up" style={{ animationDelay: "400ms" }}>
         <SectionTitle icon={Navigation03Icon}>Navigation</SectionTitle>
-        <p className="text-xs text-muted-foreground mb-3">
+        <p className="text-[11px] text-muted-foreground mb-3 font-mono">
           Ouvrez votre application de navigation préférée pour un itinéraire fiable.
         </p>
         <div className="flex gap-2">
@@ -473,7 +475,7 @@ function ExploreTab({
             href={generateGoogleMapsLink(lat, lon)}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-1 flex items-center justify-center gap-1.5 rounded-md border border-border bg-card px-3 py-2.5 text-xs text-foreground hover:bg-secondary transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background shadow-sm px-3 py-2.5 text-xs font-medium uppercase tracking-widest text-foreground hover:bg-secondary transition-all"
           >
             Google Maps
           </a>
@@ -481,7 +483,7 @@ function ExploreTab({
             href={generateAppleMapsLink(lat, lon, locationName)}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-1 flex items-center justify-center gap-1.5 rounded-md border border-border bg-card px-3 py-2.5 text-xs text-foreground hover:bg-secondary transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background shadow-sm px-3 py-2.5 text-xs font-medium uppercase tracking-widest text-foreground hover:bg-secondary transition-all"
           >
             Apple Maps
           </a>
@@ -507,6 +509,13 @@ function NatureTab({ species, loading, onShowOnMap }: { species: GBIFSpecies[]; 
 
   const COLORS = ['#93b399', '#c49a6c', '#e6c875', '#aeb4b7', '#d9a0a0']; // Pastel semantic colors
 
+  const donutData = useMemo(() => {
+    return distribution.map((item, index) => ({
+      ...item,
+      color: COLORS[index % COLORS.length]
+    }));
+  }, [distribution]);
+
   return (
     <div className="pb-8">
       <div className="px-5 pt-4 pb-4">
@@ -529,54 +538,51 @@ function NatureTab({ species, loading, onShowOnMap }: { species: GBIFSpecies[]; 
           </div>
         )}
         {!loading && species.length === 0 && (
-          <p className="text-sm text-muted-foreground py-4">Aucune observation enregistrée dans cette zone.</p>
+          <div className="bg-secondary/50 rounded-xl p-4 border border-border">
+            <p className="text-sm text-foreground">Aucune observation enregistrée dans cette zone.</p>
+          </div>
         )}
         
         {!loading && species.length > 0 && (
-          <div className="mb-6 mt-4 h-[120px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={distribution} layout="vertical" margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                <XAxis type="number" hide />
-                <YAxis 
-                  dataKey="name" 
-                  type="category" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontFamily: "monospace" }} 
-                  width={80}
-                />
-                <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={12}>
-                  {distribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="mb-6 mt-4 flex justify-center w-full bg-background rounded-xl p-6 border border-border shadow-sm">
+            <OrganicDonut data={donutData} totalLabel="espèces" size={220} thickness={28} />
           </div>
         )}
 
         {species.length > 0 && (
-          <div className="space-y-0">
-            {species.map((s, i) => (
-              <div
-                key={s.scientificName}
-                className="flex items-center justify-between py-2.5 border-b border-border last:border-0 animate-fade-in-up"
-                style={{ animationDelay: `${i * 40}ms` }}
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-foreground italic">{s.scientificName}</p>
-                  {s.vernacularName && (
-                    <p className="text-[11px] text-muted-foreground">{s.vernacularName}</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 ml-2 shrink-0">
-                  <span className="text-[9px] uppercase tracking-wider text-muted-foreground bg-secondary rounded-full px-2 py-0.5">
-                    {s.kingdom}
-                  </span>
-                  <span className="text-xs font-mono text-muted-foreground">{s.count}</span>
-                </div>
-              </div>
-            ))}
+          <div className="mt-8">
+            <SectionTitle>Espèces observées</SectionTitle>
+            <div className="flex flex-wrap gap-2 mt-4">
+              {species.map((s, i) => {
+                // Determine size based on rank/count (Top 3 are larger)
+                const isTop3 = i < 3;
+                const sizeClass = isTop3 
+                  ? "text-sm px-3 py-1.5 font-medium" 
+                  : i < 10 
+                    ? "text-xs px-2.5 py-1" 
+                    : "text-[10px] px-2 py-1 opacity-80";
+                
+                // Colors based on kingdom
+                const getKingdomColor = (k: string) => {
+                  if (k === 'Animalia') return 'bg-pastel-red-bg text-pastel-red-text border-pastel-red-text/20';
+                  if (k === 'Plantae') return 'bg-pastel-green-bg text-pastel-green-text border-pastel-green-text/20';
+                  if (k === 'Fungi') return 'bg-pastel-yellow-bg text-pastel-yellow-text border-pastel-yellow-text/20';
+                  return 'bg-secondary text-foreground border-border';
+                };
+
+                return (
+                  <div
+                    key={s.scientificName}
+                    className={`inline-flex items-center gap-1.5 rounded-full border ${getKingdomColor(s.kingdom)} ${sizeClass} animate-fade-in-up transition-transform hover:scale-105 cursor-default`}
+                    style={{ animationDelay: `${i * 30}ms` }}
+                    title={`${s.scientificName} - ${s.count} observations`}
+                  >
+                    <span>{s.vernacularName || s.scientificName}</span>
+                    <span className="opacity-60 font-mono text-[0.85em]">{s.count}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -653,21 +659,44 @@ function QuakesTab({ quakes, loading, onShowOnMap }: { quakes: Earthquake[]; loa
 
             <div className="mb-8">
               <SectionTitle icon={Alert02Icon}>Chronologie (30 jours)</SectionTitle>
-              <div className="h-[100px] w-full mt-4">
+              <div className="h-[120px] w-full mt-4 bg-background rounded-xl p-4 border border-border shadow-sm">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={timelineData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                    <Tooltip 
+                      cursor={{ fill: 'hsl(var(--secondary))', opacity: 0.4 }}
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          if (data.maxMag === 0) return null;
+                          return (
+                            <div className="bg-background border border-border p-2 rounded shadow-sm text-xs">
+                              <p className="text-muted-foreground mb-1">{new Date(data.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</p>
+                              <p className="font-mono text-foreground"><strong className={data.maxMag >= 4 ? 'text-pastel-red-text' : 'text-pastel-yellow-text'}>M{data.maxMag.toFixed(1)}</strong> max ({data.count} secousse{data.count > 1 ? 's' : ''})</p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
                     <XAxis dataKey="date" hide />
                     <YAxis hide domain={[0, 'dataMax']} />
-                    <Bar dataKey="maxMag" radius={[4, 4, 4, 4]}>
+                    <Bar dataKey="maxMag" radius={[4, 4, 4, 4]} barSize={8}>
                       {timelineData.map((entry, index) => (
                         <Cell 
                           key={`cell-${index}`} 
-                          fill={entry.maxMag >= 4 ? '#d9a0a0' : entry.maxMag > 0 ? '#e6c875' : '#f0f0f0'} 
+                          fill={entry.maxMag >= 4 ? 'hsl(var(--pastel-red-text))' : entry.maxMag > 0 ? 'hsl(var(--pastel-yellow-text))' : 'hsl(var(--secondary))'} 
                         />
                       ))}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="mb-8">
+              <SectionTitle icon={Location01Icon}>Répartition par profondeur</SectionTitle>
+              <div className="w-full mt-4 bg-background rounded-xl p-4 border border-border shadow-sm overflow-hidden flex justify-center">
+                <BeeswarmPlot data={quakes} width={320} height={140} />
               </div>
             </div>
 
@@ -702,6 +731,56 @@ function QuakesTab({ quakes, loading, onShowOnMap }: { quakes: Earthquake[]; loa
   );
 }
 
+// ─── History Tab (Internal View) ───────────────────────────────────────
+function HistoryTab({ wiki, locationName }: { wiki: WikiSummary | null; locationName: string }) {
+  if (!wiki) return null;
+
+  return (
+    <div className="pb-8 animate-fade-in-up">
+      <div className="px-5 pt-4 pb-4">
+        <div className="mb-6">
+          <h2 className="text-2xl font-serif mb-1">
+            {wiki.title}
+          </h2>
+          <p className="text-xs text-muted-foreground font-mono">
+            {wiki.title.toLowerCase() !== locationName.toLowerCase() && !wiki.title.toLowerCase().includes(locationName.toLowerCase()) ? "À proximité" : "Histoire & Culture"}
+          </p>
+        </div>
+
+        {wiki.thumbnail && (
+          <div className="mb-6 rounded-xl overflow-hidden shadow-sm border border-border">
+            <img
+              src={wiki.thumbnail}
+              alt={wiki.title}
+              className="w-full h-48 object-cover"
+              loading="lazy"
+            />
+          </div>
+        )}
+
+        <div className="prose prose-sm dark:prose-invert prose-p:leading-relaxed prose-p:text-foreground text-foreground max-w-none">
+          {wiki.description && (
+            <p className="font-mono text-xs text-muted-foreground mb-4 not-prose">{wiki.description}</p>
+          )}
+          <p>{wiki.extract}</p>
+        </div>
+
+        {wiki.url && (
+          <a
+            href={wiki.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-6 flex items-center justify-center gap-2 w-full py-2.5 bg-secondary text-foreground rounded-lg border border-border text-xs uppercase tracking-widest hover:bg-foreground hover:text-background transition-colors"
+          >
+            <HugeiconsIcon icon={BookOpen01Icon} size={14} />
+            Lire l'article complet
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Shared primitives ───────────────────────────────────────────────
 function SectionTitle({ children, icon }: { children: React.ReactNode; icon?: any }) {
   return (
@@ -714,7 +793,7 @@ function SectionTitle({ children, icon }: { children: React.ReactNode; icon?: an
 
 function MetricCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-card p-3 border-r border-b border-border">
+    <div className="bg-background rounded-xl p-3 border border-border shadow-sm">
       <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</p>
       <p className="text-sm font-mono mt-1 text-foreground">{value}</p>
     </div>

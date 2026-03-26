@@ -1,0 +1,45 @@
+Toutes les sources de données & APIs de WorldLayer
+
+🗺️ Géographie & Cartographie
+API / ServiceCe qu'elle fournitClé ?Limite gratuiteMode d'appelOpenFreeMapTuiles vectorielles mondialesNonIllimitéDirect clientPhoton (Komoot)Autocomplétion search-as-you-type (OSM)NonFair useProxy + cache KVNominatim (OSM)Géocodage inverse uniquement (coords → nom)Non1 req/sec globalProxy obligatoire + cache KV 24hOverpass APITous les objets OSM (hôpitaux, restos, POI...)Non~10 000 req/jourProxy obligatoire + cache D1 6hOpenTopoDataAltitude de n'importe quel point GPSNon1 000 req/jourDirect client + cache D1OpenRouteServiceItinéraires Tourisme & Outdoor (PAS urgence)Oui (gratuit)2 000 req/jourProxy + cache D1BAN FranceAdresses françaises officielles (26M)NonIllimitéDirect clientGeoNamesNoms géographiques, codes postaux, populationsOui (gratuit)GénéreuxDataset dans R2
+
+⛅ Météo & Conditions atmosphériques
+API / ServiceCe qu'elle fournitClé ?Limite gratuiteMode d'appelOpen-MeteoMétéo complète 16j, historique, marine, qualité air, élévationNonIllimitéDirect clientOpen-Meteo MarineVagues, courants, conditions maritimesNonIllimitéDirect clientMétéo-France Open DataDonnées officielles FR très précises (AROME 1.3km)Oui (gratuit)GénéreuxProxy (clé)AQICNQualité de l'air temps réel (12 000 stations mondiales)Oui (gratuit)GénéreuxProxy + cache KV 45 minNASA POWERDonnées solaires et climatiques NASANonIllimitéDirect clientSunrise-Sunset APILever/coucher du soleil, phases de luneNonIllimitéDirect client
+
+📚 Connaissance & Culture
+API / ServiceCe qu'elle fournitClé ?Limite gratuiteMode d'appelWikipedia APIRésumés d'articles en 40+ languesNonGénéreuxDirect clientWikidataDonnées structurées (population, langue, monnaie...)NonGénéreuxDirect clientWikimedia CommonsPhotos géolocalisées (rayon 1 km urbain / 5 km terrain)NonGénéreuxDirect clientREST CountriesDonnées de 250 pays (drapeaux, devises, capitale...)NonIllimitéDataset dans R2Open Food FactsProduits alimentaires locaux, Nutri-ScoreNonIllimitéDirect client
+
+⚡ Temps réel & Alertes
+API / ServiceCe qu'elle fournitClé ?Limite gratuiteMode d'appelUSGS EarthquakeSéismes mondiaux en temps réel (GeoJSON)NonIllimitéDirect client + cache KV 5 mindisease.shIndicateurs épidémiologiques mondiauxNonIllimitéDirect client + cache KV 1hOpenSky NetworkPosition des AVIONS en vol (ADS-B — pas de navires)Non400 crédits/jourDirect client + cache KV 30saisstream.ioTrafic NAVIRES AIS en temps réel (WebSocket)Oui (gratuit)GénéreuxWebSocket direct clientOpenAQQualité de l'air historique (30M mesures/jour)Oui (gratuit)GénéreuxProxy + cache KV 45 minGBIFOccurrences d'espèces animales/végétales (2.5 Mds)NonGénéreuxDirect client + cache D1 24hOpen Notify (ISS)Position de l'ISS en temps réelNonIllimitéDirect client + cache KV 30s
+
+🤖 Intelligence artificielle & Synthèse
+API / ServiceCe qu'elle fournitClé ?Limite réelleMode d'appelGroq API (Llama 3.3 70B)Synthèse contextuelle ultra-rapide (LPU)Oui (gratuit)~1 000 req/jour, 6 000 tokens/minProxy + cache KV 15 min — à la demande uniquementWebLLM (Phase 3)LLM dans le navigateur via WebGPU, offline totalNonIllimité (local)Local — iOS 26+, Android Chrome 121+, Firefox 141+Hugging Face Inference800+ modèles IA (traduction, NLP, vision...)Oui (gratuit)GénéreuxProxyLibreTranslateTraduction 30+ languesNon (si self-hosted)Illimité si self-hostedDirect client (self-hosted)Transformers.jsTâches NLP légères directement dans le navigateurNonIllimité (local)Local — pas d'appel réseau
+
+🚨 Donnée critique — Hardcodée dans le bundle
+SourceCe qu'elle fournitFormatMise à jouremergency_numbers.jsonNuméros d'urgence de tous les pays + bounding boxes géographiquesJSON statique intégré au buildVérification automatique CI/CDFuseaux horaires mondeBase tz complèteJSON statique intégré au buildQuelques fois par an
+
+🏗️ Infrastructure & Backend
+ServiceRôleTier gratuitCloudflare Workers + Hono.jsProxy API, rate limiting, circuit breakers, protection anti-abus100 000 req/jourCloudflare KVCache Edge partagé mondial (10-30ms)100 000 lectures/jourCloudflare D1Cache SQL géospatial requêtable au edge5 000 000 lectures/jourCloudflare R2Stockage PMTiles + datasets open data — zéro egress10 GB + 1M opérations/moisCloudflare QueuesDéduplication des requêtes simultanées1 000 000 messages/moisCloudflare Analytics EngineMétriques d'usage zero-cookie, RGPD natifInclus WorkersCloudflare Cron WorkersPré-chargement prédictif des 500 lieux populaires chaque nuitInclus WorkersUpstash RedisCache Redis serverless pour données très courtes durées10 000 req/jourSupabasePostgreSQL managé (optionnel Phase 3+)500 MB, 50 000 req/mois
+
+🛠️ Frontend & Dev
+OutilRôleMapLibre GL JS v5Rendu cartographique WebGLdeck.gl (lazy)Visualisation données massives (Mode Data uniquement)Turf.jsCalculs géométriques offline (distances, profils altimétriques)Dexie.jsPersistance locale IndexedDB (cache POI, PMTiles, annotations)TanStack Query v5Cache client + gestion des appels APIFramer MotionAnimations et transitionsZustandÉtat global de l'appReact 19 + TypeScript + ViteFramework + build
+
+🧪 Tests & Monitoring
+OutilRôleVitestTests unitairesPlaywrightTests d'intégration (chromium, firefox, webkit)MSW (Mock Service Worker)Mocking des APIs en testaxe-coreTests d'accessibilité automatisésk6Tests de charge (100 → 500 → 1 000 utilisateurs simultanés)Lighthouse CITests de performance à chaque PRSentryMonitoring erreurs en productionCloudflare Budget AlertsAlerte si coût > 3$/mois
+
+
+
+
+
+
+
+
+
+
+ Recommandation pour ton stack (WorldLayer)
+Vu que tu es sur Cloudflare + React/web :
+
+ECharts pour les cartes et visualisations riches (il a un module geo intégré)
+Recharts ou Tremor pour les dashboards UI rapides
+uPlot si tu affiches des séries temporelles dense (capteurs, météo)
+D3 en dessous pour les custom viz vraiment spécifiques

@@ -247,6 +247,8 @@ export interface Earthquake {
   time: number;
   distance: number;
   url: string;
+  lat: number;
+  lon: number;
 }
 
 export async function fetchEarthquakes(lat: number, lon: number, radiusKm = 300, days = 30): Promise<Earthquake[]> {
@@ -265,6 +267,8 @@ export async function fetchEarthquakes(lat: number, lon: number, radiusKm = 300,
       time: f.properties.time,
       distance: Math.round(haversine(lat, lon, f.geometry.coordinates[1], f.geometry.coordinates[0]) / 1000),
       url: f.properties.url,
+      lat: f.geometry.coordinates[1],
+      lon: f.geometry.coordinates[0],
     }));
   } catch {
     return [];
@@ -277,6 +281,7 @@ export interface GBIFSpecies {
   vernacularName: string;
   kingdom: string;
   count: number;
+  occurrences: { lat: number; lon: number }[];
 }
 
 const translateTaxonomy = (kingdom: string, className: string) => {
@@ -305,13 +310,18 @@ export async function fetchGBIFSpecies(lat: number, lon: number): Promise<GBIFSp
       if (!r.species) continue;
       const key = r.species;
       if (speciesMap.has(key)) {
-        speciesMap.get(key)!.count++;
+        const s = speciesMap.get(key)!;
+        s.count++;
+        if (r.decimalLatitude && r.decimalLongitude) {
+          s.occurrences.push({ lat: r.decimalLatitude, lon: r.decimalLongitude });
+        }
       } else {
         speciesMap.set(key, {
           scientificName: r.species,
           vernacularName: r.vernacularName || "",
           kingdom: translateTaxonomy(r.kingdom, r.class),
           count: 1,
+          occurrences: (r.decimalLatitude && r.decimalLongitude) ? [{ lat: r.decimalLatitude, lon: r.decimalLongitude }] : [],
         });
       }
     }

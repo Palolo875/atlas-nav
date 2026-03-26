@@ -5,14 +5,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Layers01Icon } from "@hugeicons/core-free-icons";
 
+import type { Earthquake, GBIFSpecies } from "@/lib/enrichment";
+
 interface MapViewProps {
   center: [number, number]; // [lon, lat]
   zoom: number;
   onMapClick?: (lat: number, lon: number) => void;
   markerPosition?: [number, number] | null;
   activeLayer?: "none" | "quakes" | "nature";
-  quakesData?: any[]; // Simplified for now, should be Earthquake[]
-  natureData?: any[]; // Simplified for now, should be GBIFSpecies[]
+  quakesData?: Earthquake[];
+  natureData?: GBIFSpecies[];
 }
 
 const MAP_STYLES = {
@@ -151,26 +153,18 @@ export default function MapView({ center, zoom, onMapClick, markerPosition, acti
     if (!map) return;
 
     // --- Cleanup existing custom layers ---
+    if (map.getLayer("quakes-layer-glow")) map.removeLayer("quakes-layer-glow");
     if (map.getLayer("quakes-layer")) map.removeLayer("quakes-layer");
     if (map.getSource("quakes-source")) map.removeSource("quakes-source");
-    if (map.getLayer("nature-layer")) map.removeLayer("nature-layer");
+    if (map.getLayer("nature-clusters")) map.removeLayer("nature-clusters");
+    if (map.getLayer("nature-cluster-count")) map.removeLayer("nature-cluster-count");
+    if (map.getLayer("nature-unclustered-point")) map.removeLayer("nature-unclustered-point");
     if (map.getSource("nature-source")) map.removeSource("nature-source");
 
     // --- Add Quakes Layer ---
     if (activeLayer === "quakes" && quakesData.length > 0) {
       // Create GeoJSON from quakes data
-      // Note: This assumes quakesData has lat/lon. The current Enrichment API returns distance but not exact lat/lon for the list.
-      // We'll need to update the fetchEarthquakes to return lat/lon to draw them accurately.
-      // For now, we simulate points around the center for the prototype if real coords are missing.
-      
-      const features = quakesData.map((q, i) => {
-        // Fallback: create a circle around the center based on distance if exact coords are missing
-        // In a real app, you'd use q.lat and q.lon from the USGS API
-        const angle = (i / quakesData.length) * Math.PI * 2;
-        const distDeg = q.distance / 111; // rough km to deg conversion
-        const lat = center[1] + Math.cos(angle) * distDeg;
-        const lon = center[0] + Math.sin(angle) * distDeg;
-        
+      const features = quakesData.map((q) => {
         return {
           type: "Feature",
           properties: {
@@ -179,7 +173,7 @@ export default function MapView({ center, zoom, onMapClick, markerPosition, acti
           },
           geometry: {
             type: "Point",
-            coordinates: [lon, lat] // [lng, lat]
+            coordinates: [q.lon, q.lat] // [lng, lat]
           }
         };
       });
@@ -195,19 +189,36 @@ export default function MapView({ center, zoom, onMapClick, markerPosition, acti
       });
 
       map.addLayer({
+        id: "quakes-layer-glow",
+        type: "circle",
+        source: "quakes-source",
+        paint: {
+          "circle-radius": [
+            "interpolate", ["linear"], ["get", "mag"],
+            2, 16,
+            5, 48,
+            8, 80
+          ],
+          "circle-color": "hsl(1, 56%, 40%)", // pastel-red-text
+          "circle-opacity": 0.15,
+          "circle-blur": 0.5
+        }
+      });
+
+      map.addLayer({
         id: "quakes-layer",
         type: "circle",
         source: "quakes-source",
         paint: {
           "circle-radius": [
             "interpolate", ["linear"], ["get", "mag"],
-            2, 8,
-            5, 24,
-            8, 40
+            2, 6,
+            5, 16,
+            8, 28
           ],
           "circle-color": "hsl(1, 56%, 40%)", // pastel-red-text
-          "circle-opacity": 0.6,
-          "circle-stroke-width": 2,
+          "circle-opacity": 0.8,
+          "circle-stroke-width": 1.5,
           "circle-stroke-color": "hsl(0, 82%, 96%)" // pastel-red-bg
         }
       });
@@ -215,28 +226,20 @@ export default function MapView({ center, zoom, onMapClick, markerPosition, acti
 
     // --- Add Nature Layer ---
     if (activeLayer === "nature" && natureData.length > 0) {
-      // Create GeoJSON from nature data
-      // Like quakes, we simulate points for the prototype
-      
-      const features = natureData.map((s, i) => {
-        const angle = (i / natureData.length) * Math.PI * 2;
-        const distDeg = (0.05 + Math.random() * 0.1); // Random distance up to ~10km
-        const lat = center[1] + Math.cos(angle) * distDeg;
-        const lon = center[0] + Math.sin(angle) * distDeg;
-        
-        return {
+      // Create GeoJSON from nature data occurrences
+      const features = natureData.flatMap((s) => 
+        (s.occurrences || []).map((occ: { lat: number; lon: number }) => ({
           type: "Feature",
           properties: {
             name: s.scientificName,
-            count: s.count,
             kingdom: s.kingdom
           },
           geometry: {
             type: "Point",
-            coordinates: [lon, lat]
+            coordinates: [occ.lon, occ.lat]
           }
-        };
-      });
+        }))
+      );
 
       const geojson = {
         type: "FeatureCollection",
@@ -245,24 +248,56 @@ export default function MapView({ center, zoom, onMapClick, markerPosition, acti
 
       map.addSource("nature-source", {
         type: "geojson",
-        data: geojson as any
+        data: geojson as any,
+        cluster: true,
+        clusterMaxZoom: 14,
+        clusterRadius: 50
       });
 
       map.addLayer({
-        id: "nature-layer",
+        id: "nature-clusters",
         type: "circle",
         source: "nature-source",
+        filter: ["has", "point_count"],
         paint: {
-          "circle-radius": [
-            "interpolate", ["linear"], ["get", "count"],
-            1, 6,
-            10, 12,
-            100, 20
-          ],
           "circle-color": "hsl(124, 32%, 31%)", // pastel-green-text
-          "circle-opacity": 0.7,
+          "circle-radius": [
+            "step",
+            ["get", "point_count"],
+            15, 5,
+            20, 15,
+            25
+          ],
           "circle-stroke-width": 2,
-          "circle-stroke-color": "hsl(114, 22%, 94%)" // pastel-green-bg
+          "circle-stroke-color": "hsl(114, 22%, 94%)"
+        }
+      });
+
+      map.addLayer({
+        id: "nature-cluster-count",
+        type: "symbol",
+        source: "nature-source",
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field": "{point_count_abbreviated}",
+          "text-font": ["DIN Offc Pro Medium", "Arial Unicode MS Bold"],
+          "text-size": 12
+        },
+        paint: {
+          "text-color": "#ffffff"
+        }
+      });
+
+      map.addLayer({
+        id: "nature-unclustered-point",
+        type: "circle",
+        source: "nature-source",
+        filter: ["!", ["has", "point_count"]],
+        paint: {
+          "circle-radius": 6,
+          "circle-color": "hsl(124, 32%, 31%)",
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "hsl(114, 22%, 94%)"
         }
       });
     }
