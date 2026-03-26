@@ -247,8 +247,6 @@ export interface Earthquake {
   time: number;
   distance: number;
   url: string;
-  lat: number;
-  lon: number;
 }
 
 export async function fetchEarthquakes(lat: number, lon: number, radiusKm = 300, days = 30): Promise<Earthquake[]> {
@@ -267,8 +265,6 @@ export async function fetchEarthquakes(lat: number, lon: number, radiusKm = 300,
       time: f.properties.time,
       distance: Math.round(haversine(lat, lon, f.geometry.coordinates[1], f.geometry.coordinates[0]) / 1000),
       url: f.properties.url,
-      lat: f.geometry.coordinates[1],
-      lon: f.geometry.coordinates[0]
     }));
   } catch {
     return [];

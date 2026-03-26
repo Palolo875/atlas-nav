@@ -7,15 +7,6 @@ import { reverseGeocode, type GeoResult } from "@/lib/geocoder";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { CompassIcon } from "@hugeicons/core-free-icons";
 
-// Type pour les données projetées sur la carte
-export type MapProjectionData = {
-  type: 'quakes';
-  data: any[];
-} | {
-  type: 'nature';
-  data: any[];
-} | null;
-
 export default function Index() {
   const [center, setCenter] = useState<[number, number]>([2.3522, 48.8566]);
   const [zoom] = useState(6);
@@ -25,11 +16,12 @@ export default function Index() {
   const [loading, setLoading] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lon: number }>({ lat: 48.8566, lon: 2.3522 });
-  const [projectionData, setProjectionData] = useState<MapProjectionData>(null);
+  const [activeLayer, setActiveLayer] = useState<"none" | "quakes" | "nature">("none");
+  const [mapData, setMapData] = useState<{ quakes: any[], nature: any[] }>({ quakes: [], nature: [] });
 
   const loadWeather = useCallback(async (lat: number, lon: number, name?: string) => {
     setLoading(true);
-    setProjectionData(null); // Reset projection when loading new location
+    setActiveLayer("none"); // Reset layer on new search
     try {
       const [data, resolvedName] = await Promise.all([
         fetchWeather(lat, lon),
@@ -71,7 +63,9 @@ export default function Index() {
         zoom={zoom} 
         onMapClick={handleMapClick} 
         markerPosition={markerPos} 
-        projectionData={projectionData}
+        activeLayer={activeLayer}
+        quakesData={mapData.quakes}
+        natureData={mapData.nature}
       />
 
       {/* Search overlay */}
@@ -102,14 +96,19 @@ export default function Index() {
         locationName={locationName}
         lat={selectedCoords.lat}
         lon={selectedCoords.lon}
-        onProjectData={setProjectionData}
+        onLayerSelect={(layer, data) => {
+          setActiveLayer(layer);
+          if (data) {
+            setMapData(prev => ({ ...prev, [layer]: data }));
+          }
+        }}
       />
 
       {/* Branding */}
       {!drawerOpen && (
         <div className="absolute bottom-6 left-4 z-10 animate-fade-in-up">
           <div className="rounded-lg border border-overlay-border bg-overlay px-4 py-3 shadow-subtle">
-            <h2 className="font-serif text-lg">Atlas Weather</h2>
+            <h2 className="font-serif text-lg">Atlas Nav</h2>
             <p className="text-xs text-muted-foreground mt-0.5">Cliquez sur la carte ou recherchez un lieu</p>
           </div>
         </div>
