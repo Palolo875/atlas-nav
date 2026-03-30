@@ -13,9 +13,10 @@ interface MapViewProps {
   onMapClick?: (lat: number, lon: number) => void;
   onZoomChange?: (zoom: number) => void;
   markerPosition?: [number, number] | null;
-  activeLayer?: "none" | "quakes" | "nature";
+  activeLayer?: "none" | "quakes" | "nature" | "risks";
   quakesData?: Earthquake[];
   natureData?: GBIFSpecies[];
+  naturalEventsData?: any[];
   traits?: Set<SituationTrait>;
   landmarks?: WikimediaPhoto[];
 }
@@ -63,7 +64,7 @@ const MAP_STYLES = {
 
 type StyleKey = keyof typeof MAP_STYLES;
 
-export default function MapView({ center, zoom, onMapClick, onZoomChange, markerPosition, activeLayer = "none", quakesData = [], natureData = [], traits, landmarks = [] }: MapViewProps) {
+export default function MapView({ center, zoom, onMapClick, onZoomChange, markerPosition, activeLayer = "none", quakesData = [], natureData = [], naturalEventsData = [], traits, landmarks = [] }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
@@ -130,7 +131,6 @@ export default function MapView({ center, zoom, onMapClick, onZoomChange, marker
       center,
       zoom,
       attributionControl: false,
-      antialias: true,
     });
 
     map.on("load", () => {
@@ -141,7 +141,7 @@ export default function MapView({ center, zoom, onMapClick, onZoomChange, marker
       setup3DBuildings(map);
     });
 
-    map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true }), "bottom-right");
+    map.addControl(new maplibregl.NavigationControl(), "bottom-right");
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 100, unit: 'metric' }), "bottom-left");
 
     map.on("click", (e) => {
@@ -187,6 +187,80 @@ export default function MapView({ center, zoom, onMapClick, onZoomChange, marker
       setup3DBuildings(mapRef.current);
     }
   }, [show3D, currentStyle]);
+
+  // Handle Data Layers (Quakes, Nature, Risks)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Helper to clear existing layers
+    const ids = ["quakes-layer", "nature-layer", "nasa-layer"];
+    const sources = ["quakes-source", "nature-source", "nasa-source"];
+
+    // Update Sources & Layers
+    const updateLayers = () => {
+      // 1. Quakes
+      if (map.getSource("quakes-source")) {
+        (map.getSource("quakes-source") as maplibregl.GeoJSONSource).setData({
+          type: "FeatureCollection",
+          features: quakesData.map(q => ({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [q.lon, q.lat] },
+            properties: { mag: q.magnitude }
+          }))
+        });
+      }
+
+      // 2. NASA Events
+      if (map.getSource("nasa-source")) {
+        (map.getSource("nasa-source") as maplibregl.GeoJSONSource).setData({
+          type: "FeatureCollection",
+          features: (naturalEventsData || []).map(e => ({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [e.lon, e.lat] },
+            properties: { category: e.category }
+          }))
+        });
+      }
+    };
+
+    map.on("load", () => {
+      // Initialize Sources
+      map.addSource("quakes-source", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      map.addSource("nasa-source", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      
+      map.addLayer({
+        id: "quakes-layer",
+        type: "circle",
+        source: "quakes-source",
+        paint: {
+          "circle-radius": ["*", ["get", "mag"], 4],
+          "circle-color": "#f97316",
+          "circle-opacity": 0.6,
+          "circle-stroke-width": 1,
+          "circle-stroke-color": "#fff"
+        }
+      });
+
+      map.addLayer({
+        id: "nasa-layer",
+        type: "circle",
+        source: "nasa-source",
+        paint: {
+          "circle-radius": 8,
+          "circle-color": "#ef4444",
+          "circle-opacity": 0.8,
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#fff"
+        }
+      });
+
+      updateLayers();
+    });
+
+    if (map.loaded()) updateLayers();
+
+  }, [quakesData, naturalEventsData]);
 
   // Marker handling
   useEffect(() => {

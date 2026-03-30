@@ -18,11 +18,10 @@ import StoryCarousel from "./StoryCarousel";
 import GaugeArc from "./GaugeArc";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  Navigation03Icon, BookOpen01Icon, Image01Icon,
-  Globe02Icon, Location01Icon, Alert02Icon,
-  Leaf01Icon, ArrowRight01Icon, Cancel01Icon,
-  FastWindIcon, DropletIcon, Sun03Icon,
-  Share01Icon, Bookmark02Icon, Search01Icon, Call01Icon
+  Download01Icon, Image01Icon, BookOpen01Icon, Globe02Icon, Location01Icon, 
+  Call01Icon, Navigation03Icon, Share01Icon, Bookmark02Icon, 
+  ArrowRight01Icon, Leaf01Icon, Alert02Icon, SparklesIcon, VolumeMediumIcon,
+  FastWindIcon, DropletIcon, Sun03Icon, Cancel01Icon
 } from "@hugeicons/core-free-icons";
 import { detectSituations, calculateModuleWeights, type SituationTrait } from "@/lib/priorities";
 
@@ -109,6 +108,34 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
 
   const { current } = weather;
 
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const speakAura = () => {
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    const text = `
+      ${locationName}. 
+      Actuellement ${current.temperature} degrés. ${getWeatherDescription(current.weatherCode)}. 
+      ${traits.has("VITAL") ? "C'est une zone avec services et assistance." : ""}
+      ${traits.has("WILD") ? "Vous êtes dans un environnement naturel." : ""}
+      ${wiki?.extract ? wiki.extract.slice(0, 160) : ""}
+    `;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "fr-FR";
+    utterance.rate = 0.9;
+    utterance.onend = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+    setIsSpeaking(true);
+  };
+
+  useEffect(() => {
+    return () => window.speechSynthesis.cancel();
+  }, []);
+
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="max-h-[92vh] outline-none">
@@ -129,15 +156,34 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
         )}
 
         <DrawerHeader className={`pb-0 px-5 relative transition-all duration-300 ${activeTab !== 'explore' ? 'pt-14' : ''}`}>
-          <DrawerClose 
-            className="absolute right-5 top-4 p-2 rounded-full hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
-            onClick={() => onLayerSelect?.('none')}
-          >
-            <HugeiconsIcon icon={Cancel01Icon} size={16} />
-          </DrawerClose>
+          <div className="flex items-center justify-between pointer-events-auto">
+            <div className="min-w-0">
+              <DrawerTitle className="font-serif text-3xl text-foreground truncate">
+                {locationName}
+              </DrawerTitle>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-[10px] font-mono text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded border border-border/30">
+                  {lat.toFixed(6)}, {lon.toFixed(6)}
+                </p>
+                <button 
+                  onClick={speakAura}
+                  className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border transition-all text-[9px] uppercase tracking-widest font-bold ${
+                    isSpeaking 
+                      ? 'bg-primary border-primary text-white animate-pulse' 
+                      : 'bg-background border-border/40 text-muted-foreground hover:bg-secondary'
+                  }`}
+                >
+                  <HugeiconsIcon icon={VolumeMediumIcon} size={10} />
+                  {isSpeaking ? "Pause Audio" : "Audio Guide"}
+                </button>
+              </div>
+            </div>
+            <DrawerClose className="h-10 w-10 flex items-center justify-center rounded-full bg-secondary/50 hover:bg-secondary transition-colors shrink-0" onClick={() => onLayerSelect?.('none')}>
+              <HugeiconsIcon icon={Cancel01Icon} size={20} />
+            </DrawerClose>
+          </div>
           <div className="flex items-start justify-between pr-8">
             <div className="min-w-0 flex-1">
-              <DrawerTitle className="text-2xl font-serif truncate">{locationName}</DrawerTitle>
               <p className="text-xs text-muted-foreground font-mono mt-1">
                 {getWeatherDescription(current.weatherCode)}
                 {country && ` — ${country.subregion || country.region || country.name}`}
@@ -397,7 +443,7 @@ function ExploreTab({
           )}
           {weather.temp > 30 && (
             <div className="bg-orange-100 dark:bg-orange-900/30 border border-orange-500/20 text-orange-700 dark:text-orange-400 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
-              <HugeiconsIcon icon={AiIcon} size={12} />
+              <HugeiconsIcon icon={SparklesIcon} size={12} />
               Chaleur Intense
             </div>
           )}
@@ -420,12 +466,12 @@ function ExploreTab({
         return (
           <div key="narrative" className="px-5 pt-4 pb-2 border-t border-border">
             <div className="flex items-center justify-between mb-3">
-              <SectionTitle className="mb-0">Analyse contextuelle</SectionTitle>
+              <SectionTitle className="mb-0">Perspective Situationnelle</SectionTitle>
               <button 
                 onClick={() => setActiveTab('meteo')}
                 className="text-[10px] uppercase tracking-widest text-foreground hover:text-background transition-colors flex items-center gap-1 bg-secondary hover:bg-foreground px-3 py-1.5 rounded-full border border-border shadow-sm"
               >
-                Détails météo
+                Météo détaillée
                 <HugeiconsIcon icon={ArrowRight01Icon} size={10} />
               </button>
             </div>
@@ -446,12 +492,17 @@ function ExploreTab({
               onSelectStory={(id) => {
                 if (id === 'nature' && onLayerSelect) onLayerSelect('nature', species);
                 if (id === 'quakes' && onLayerSelect) onLayerSelect('quakes', quakes);
+                if (id === 'risks' && onLayerSelect) onLayerSelect('risks', naturalEvents);
               }} 
             />
           </div>
         );
 
       case "isolated_brief": {
+        const isActuallyIsolated = pois.length === 0 && !wiki && !country && photos.length === 0 && species.length === 0 && quakes.length === 0;
+        if (!isActuallyIsolated) return null;
+        
+        return (
           <div key="isolated_brief" className="px-5 pt-4 pb-8 border-b border-border animate-fade-in-up">
             <div className="relative bg-secondary/20 rounded-[32px] p-8 border border-border/50 text-center overflow-hidden">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-foreground/5 to-transparent opacity-50" />
@@ -483,7 +534,7 @@ function ExploreTab({
       case "photos":
         return photos.length > 0 && (
           <div key="photos" className="px-5 pt-4 pb-4 border-b border-border animate-fade-in-up">
-            <SectionTitle icon={Image01Icon}>Photos du lieu</SectionTitle>
+            <SectionTitle icon={Image01Icon}>Documentation Visuelle</SectionTitle>
             <div className="grid grid-cols-3 gap-2 rounded-xl overflow-hidden">
               {photos.map((p, i) => (
                 <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="block relative group">
@@ -503,7 +554,7 @@ function ExploreTab({
       case "wiki_brief":
         return wiki && (
           <div key="wiki_brief" className="px-5 pt-4 pb-4 border-b border-border animate-fade-in-up">
-            <SectionTitle icon={BookOpen01Icon}>À propos</SectionTitle>
+            <SectionTitle icon={BookOpen01Icon}>Synthèse Culturelle</SectionTitle>
             <div className="flex gap-3">
               {wiki.thumbnail && (
                 <img src={wiki.thumbnail} alt={wiki.title} className="w-20 h-20 rounded-xl object-cover border border-border shrink-0" loading="lazy" />

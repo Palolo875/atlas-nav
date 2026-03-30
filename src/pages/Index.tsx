@@ -20,8 +20,8 @@ export default function Index() {
   const [loading, setLoading] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lon: number }>({ lat: 48.8566, lon: 2.3522 });
-  const [activeLayer, setActiveLayer] = useState<"none" | "quakes" | "nature">("none");
-  const [mapData, setMapData] = useState<{ quakes: Earthquake[], nature: GBIFSpecies[] }>({ quakes: [], nature: [] });
+  const [activeLayer, setActiveLayer] = useState<"none" | "quakes" | "nature" | "risks">("none");
+  const [mapData, setMapData] = useState<{ quakes: Earthquake[], nature: GBIFSpecies[], risks: any[] }>({ quakes: [], nature: [], risks: [] });
   const [traits, setTraits] = useState<Set<SituationTrait>>(new Set());
   const [landmarks, setLandmarks] = useState<WikimediaPhoto[]>([]);
 
@@ -76,6 +76,7 @@ export default function Index() {
         activeLayer={activeLayer}
         quakesData={mapData.quakes}
         natureData={mapData.nature}
+        naturalEventsData={mapData.risks}
         traits={traits}
         landmarks={landmarks}
       />
