@@ -7,11 +7,13 @@ import { reverseGeocode, type GeoResult } from "@/lib/geocoder";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { CompassIcon } from "@hugeicons/core-free-icons";
 
-import type { Earthquake, GBIFSpecies } from "@/lib/enrichment";
+import type { Earthquake, GBIFSpecies, WikimediaPhoto } from "@/lib/enrichment";
+import type { SituationTrait } from "@/lib/priorities";
 
 export default function Index() {
   const [center, setCenter] = useState<[number, number]>([2.3522, 48.8566]);
   const [zoom] = useState(6);
+  const [mapZoom, setMapZoom] = useState(6);
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [locationName, setLocationName] = useState("");
   const [markerPos, setMarkerPos] = useState<[number, number] | null>(null);
@@ -20,10 +22,15 @@ export default function Index() {
   const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lon: number }>({ lat: 48.8566, lon: 2.3522 });
   const [activeLayer, setActiveLayer] = useState<"none" | "quakes" | "nature">("none");
   const [mapData, setMapData] = useState<{ quakes: Earthquake[], nature: GBIFSpecies[] }>({ quakes: [], nature: [] });
+  const [traits, setTraits] = useState<Set<SituationTrait>>(new Set());
+  const [landmarks, setLandmarks] = useState<WikimediaPhoto[]>([]);
 
   const loadWeather = useCallback(async (lat: number, lon: number, name?: string) => {
     setLoading(true);
     setActiveLayer("none"); // Reset layer on new search
+    setTraits(new Set()); // Reset traits
+    setLandmarks([]); // Reset landmarks
+
     try {
       const [data, resolvedName] = await Promise.all([
         fetchWeather(lat, lon),
@@ -63,11 +70,14 @@ export default function Index() {
       <MapView 
         center={center} 
         zoom={zoom} 
-        onMapClick={handleMapClick} 
+        onMapClick={handleMapClick}
+        onZoomChange={setMapZoom}
         markerPosition={markerPos} 
         activeLayer={activeLayer}
         quakesData={mapData.quakes}
         natureData={mapData.nature}
+        traits={traits}
+        landmarks={landmarks}
       />
 
       {/* Search overlay */}
@@ -104,6 +114,9 @@ export default function Index() {
             setMapData(prev => ({ ...prev, [layer]: data }));
           }
         }}
+        onTraitsChange={setTraits}
+        onPhotosLoaded={setLandmarks}
+        zoomLevel={mapZoom}
       />
 
       {/* Branding */}

@@ -2,26 +2,29 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import type { Earthquake, GBIFSpecies, WikimediaPhoto } from "@/lib/enrichment";
+import type { SituationTrait } from "@/lib/priorities";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Layers01Icon } from "@hugeicons/core-free-icons";
-
-import type { Earthquake, GBIFSpecies } from "@/lib/enrichment";
+import { Layers01Icon, BookOpen01Icon, Alert02Icon, Leaf01Icon, Navigation03Icon, ViewIcon } from "@hugeicons/core-free-icons";
 
 interface MapViewProps {
   center: [number, number]; // [lon, lat]
   zoom: number;
   onMapClick?: (lat: number, lon: number) => void;
+  onZoomChange?: (zoom: number) => void;
   markerPosition?: [number, number] | null;
   activeLayer?: "none" | "quakes" | "nature";
   quakesData?: Earthquake[];
   natureData?: GBIFSpecies[];
+  traits?: Set<SituationTrait>;
+  landmarks?: WikimediaPhoto[];
 }
 
 const MAP_STYLES = {
   plan: {
     name: "Plan",
-    url: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-    thumbnail: "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/13/4166/2819.png"
+    url: "https://tiles.openfreemap.org/styles/bright",
+    thumbnail: "https://tiles.openfreemap.org/styles/bright/thumbnail.png"
   },
   satellite: {
     name: "Satellite",
@@ -48,18 +51,75 @@ const MAP_STYLES = {
   },
   sombre: {
     name: "Sombre",
-    url: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-    thumbnail: "https://cartodb-basemaps-a.global.ssl.fastly.net/dark_all/13/4166/2819.png"
+    url: "https://tiles.openfreemap.org/styles/dark",
+    thumbnail: "https://tiles.openfreemap.org/styles/dark/thumbnail.png"
+  },
+  relief: {
+    name: "Relief",
+    url: "https://tiles.openfreemap.org/styles/liberty",
+    thumbnail: "https://tiles.openfreemap.org/styles/liberty/thumbnail.png"
   }
 };
 
 type StyleKey = keyof typeof MAP_STYLES;
 
-export default function MapView({ center, zoom, onMapClick, markerPosition, activeLayer = "none", quakesData = [], natureData = [] }: MapViewProps) {
+export default function MapView({ center, zoom, onMapClick, onZoomChange, markerPosition, activeLayer = "none", quakesData = [], natureData = [], traits, landmarks = [] }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
+  const landmarksRef = useRef<maplibregl.Marker[]>([]);
   const [currentStyle, setCurrentStyle] = useState<StyleKey>("plan");
+  const [show3D, setShow3D] = useState(true);
+
+  // Setup 3D Building extrusion
+  const setup3DBuildings = (map: maplibregl.Map) => {
+    if (!show3D) {
+      if (map.getLayer("3d-buildings")) map.removeLayer("3d-buildings");
+      return;
+    }
+
+    const layers = map.getStyle().layers;
+    let labelLayerId;
+    if (layers) {
+      for (let i = 0; i < layers.length; i++) {
+        if (layers[i].type === "symbol" && (layers[i].layout as any)?.["text-field"]) {
+          labelLayerId = layers[i].id;
+          break;
+        }
+      }
+    }
+
+    if (!map.getLayer("3d-buildings")) {
+      map.addLayer(
+        {
+          id: "3d-buildings",
+          source: "openmaptiles",
+          "source-layer": "building",
+          type: "fill-extrusion",
+          minzoom: 13,
+          paint: {
+            "fill-extrusion-color": currentStyle === "sombre" ? "#333" : "#eee",
+            "fill-extrusion-height": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              13, 0,
+              14, ["get", "render_height"]
+            ],
+            "fill-extrusion-base": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              13, 0,
+              14, ["get", "render_min_height"]
+            ],
+            "fill-extrusion-opacity": 0.8
+          }
+        },
+        labelLayerId
+      );
+    }
+  };
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -69,14 +129,28 @@ export default function MapView({ center, zoom, onMapClick, markerPosition, acti
       style: MAP_STYLES[currentStyle].url as any,
       center,
       zoom,
-      attributionControl: {},
+      attributionControl: false,
+      antialias: true,
     });
 
-    map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "bottom-right");
-    map.addControl(new maplibregl.ScaleControl({ maxWidth: 120 }), "bottom-left");
+    map.on("load", () => {
+      setup3DBuildings(map);
+    });
+
+    map.on("style.load", () => {
+      setup3DBuildings(map);
+    });
+
+    map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true }), "bottom-right");
+    map.addControl(new maplibregl.ScaleControl({ maxWidth: 100, unit: 'metric' }), "bottom-left");
 
     map.on("click", (e) => {
       onMapClick?.(e.lngLat.lat, e.lngLat.lng);
+    });
+
+    map.on("zoomend", () => {
+      const z = Math.round(map.getZoom());
+      onZoomChange?.(z);
     });
 
     mapRef.current = map;
@@ -87,262 +161,161 @@ export default function MapView({ center, zoom, onMapClick, markerPosition, acti
     };
   }, []);
 
-  // Set dark style automatically when viewing layers
+  // Update center smoothly
   useEffect(() => {
-    if (activeLayer !== "none" && currentStyle !== "sombre") {
-      setCurrentStyle("sombre");
+    if (mapRef.current) {
+      mapRef.current.flyTo({
+        center,
+        zoom,
+        speed: 1.2,
+        curve: 1.1,
+        essential: true
+      });
     }
-  }, [activeLayer]);
+  }, [center]);
 
-  // Handle style change
+  // Handle Style change
   useEffect(() => {
-    if (!mapRef.current) return;
-    
-    // When changing style, MapLibre removes all custom layers and sources
-    // We need to wait for the style to load before we can re-add them
-    mapRef.current.once('styledata', () => {
-      // Re-add layers if needed
-      updateDynamicLayers();
-    });
-    
-    mapRef.current.setStyle(MAP_STYLES[currentStyle].url as any);
+    if (mapRef.current) {
+      mapRef.current.setStyle(MAP_STYLES[currentStyle].url as any);
+    }
   }, [currentStyle]);
 
-  // Fly to center when it changes
-  const prevCenter = useRef(center);
+  // Handle 3D toggle
   useEffect(() => {
-    if (!mapRef.current) return;
-    if (prevCenter.current[0] !== center[0] || prevCenter.current[1] !== center[1]) {
-      mapRef.current.flyTo({ center, zoom, duration: 1200 });
-      prevCenter.current = center;
+    if (mapRef.current) {
+      setup3DBuildings(mapRef.current);
     }
-  }, [center, zoom]);
+  }, [show3D, currentStyle]);
 
-  // Marker
+  // Marker handling
   useEffect(() => {
     if (!mapRef.current) return;
-
-    if (markerRef.current) {
+    if (markerPosition) {
+      if (!markerRef.current) {
+        markerRef.current = new maplibregl.Marker({ color: "#ef4444" })
+          .setLngLat(markerPosition)
+          .addTo(mapRef.current);
+      } else {
+        markerRef.current.setLngLat(markerPosition);
+      }
+    } else if (markerRef.current) {
       markerRef.current.remove();
       markerRef.current = null;
     }
-
-    if (markerPosition) {
-      const el = document.createElement("div");
-      el.style.width = "14px";
-      el.style.height = "14px";
-      el.style.borderRadius = "50%";
-      el.style.background = "#111";
-      el.style.border = "3px solid #fff";
-      el.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
-      
-      // Hide marker when showing layers to focus on data
-      if (activeLayer !== "none") {
-        el.style.opacity = "0.2";
-      }
-
-      markerRef.current = new maplibregl.Marker({ element: el })
-        .setLngLat(markerPosition)
-        .addTo(mapRef.current);
-    }
-  }, [markerPosition, activeLayer]);
-
-  // Dynamic Layers Management
-  const updateDynamicLayers = () => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    // --- Cleanup existing custom layers ---
-    if (map.getLayer("quakes-layer-glow")) map.removeLayer("quakes-layer-glow");
-    if (map.getLayer("quakes-layer")) map.removeLayer("quakes-layer");
-    if (map.getSource("quakes-source")) map.removeSource("quakes-source");
-    if (map.getLayer("nature-clusters")) map.removeLayer("nature-clusters");
-    if (map.getLayer("nature-cluster-count")) map.removeLayer("nature-cluster-count");
-    if (map.getLayer("nature-unclustered-point")) map.removeLayer("nature-unclustered-point");
-    if (map.getSource("nature-source")) map.removeSource("nature-source");
-
-    // --- Add Quakes Layer ---
-    if (activeLayer === "quakes" && quakesData.length > 0) {
-      // Create GeoJSON from quakes data
-      const features = quakesData.map((q) => {
-        return {
-          type: "Feature",
-          properties: {
-            mag: q.magnitude,
-            place: q.place
-          },
-          geometry: {
-            type: "Point",
-            coordinates: [q.lon, q.lat] // [lng, lat]
-          }
-        };
-      });
-
-      const geojson = {
-        type: "FeatureCollection",
-        features
-      };
-
-      map.addSource("quakes-source", {
-        type: "geojson",
-        data: geojson as any
-      });
-
-      map.addLayer({
-        id: "quakes-layer-glow",
-        type: "circle",
-        source: "quakes-source",
-        paint: {
-          "circle-radius": [
-            "interpolate", ["linear"], ["get", "mag"],
-            2, 16,
-            5, 48,
-            8, 80
-          ],
-          "circle-color": "hsl(1, 56%, 40%)", // pastel-red-text
-          "circle-opacity": 0.15,
-          "circle-blur": 0.5
-        }
-      });
-
-      map.addLayer({
-        id: "quakes-layer",
-        type: "circle",
-        source: "quakes-source",
-        paint: {
-          "circle-radius": [
-            "interpolate", ["linear"], ["get", "mag"],
-            2, 6,
-            5, 16,
-            8, 28
-          ],
-          "circle-color": "hsl(1, 56%, 40%)", // pastel-red-text
-          "circle-opacity": 0.8,
-          "circle-stroke-width": 1.5,
-          "circle-stroke-color": "hsl(0, 82%, 96%)" // pastel-red-bg
-        }
-      });
-    }
-
-    // --- Add Nature Layer ---
-    if (activeLayer === "nature" && natureData.length > 0) {
-      // Create GeoJSON from nature data occurrences
-      const features = natureData.flatMap((s) => 
-        (s.occurrences || []).map((occ: { lat: number; lon: number }) => ({
-          type: "Feature",
-          properties: {
-            name: s.scientificName,
-            kingdom: s.kingdom
-          },
-          geometry: {
-            type: "Point",
-            coordinates: [occ.lon, occ.lat]
-          }
-        }))
-      );
-
-      const geojson = {
-        type: "FeatureCollection",
-        features
-      };
-
-      map.addSource("nature-source", {
-        type: "geojson",
-        data: geojson as any,
-        cluster: true,
-        clusterMaxZoom: 14,
-        clusterRadius: 50
-      });
-
-      map.addLayer({
-        id: "nature-clusters",
-        type: "circle",
-        source: "nature-source",
-        filter: ["has", "point_count"],
-        paint: {
-          "circle-color": "hsl(124, 32%, 31%)", // pastel-green-text
-          "circle-radius": [
-            "step",
-            ["get", "point_count"],
-            15, 5,
-            20, 15,
-            25
-          ],
-          "circle-stroke-width": 2,
-          "circle-stroke-color": "hsl(114, 22%, 94%)"
-        }
-      });
-
-      map.addLayer({
-        id: "nature-cluster-count",
-        type: "symbol",
-        source: "nature-source",
-        filter: ["has", "point_count"],
-        layout: {
-          "text-field": "{point_count_abbreviated}",
-          "text-font": ["DIN Offc Pro Medium", "Arial Unicode MS Bold"],
-          "text-size": 12
-        },
-        paint: {
-          "text-color": "#ffffff"
-        }
-      });
-
-      map.addLayer({
-        id: "nature-unclustered-point",
-        type: "circle",
-        source: "nature-source",
-        filter: ["!", ["has", "point_count"]],
-        paint: {
-          "circle-radius": 6,
-          "circle-color": "hsl(124, 32%, 31%)",
-          "circle-stroke-width": 2,
-          "circle-stroke-color": "hsl(114, 22%, 94%)"
-        }
-      });
-    }
-  };
-
-  useEffect(() => {
-    updateDynamicLayers();
-  }, [activeLayer, quakesData, natureData]);
+  }, [markerPosition]);
 
   return (
-    <>
+    <div className="relative w-full h-full">
       <div ref={containerRef} className="absolute inset-0" />
       
-      {/* Layer Selector */}
-      <div className="absolute top-4 right-4 z-10">
+      {/* Premium Layer Selector (Inspiration Image 1) */}
+      <div className="absolute top-20 right-4 z-20">
         <Popover>
           <PopoverTrigger asChild>
-            <button className="h-10 w-10 bg-background/90 backdrop-blur-md border border-border shadow-sm rounded-full flex items-center justify-center text-foreground hover:bg-secondary transition-colors">
-              <HugeiconsIcon icon={Layers01Icon} size={20} />
+            <button className="flex items-center justify-center w-[44px] h-[44px] rounded-xl border border-border/50 bg-background/90 backdrop-blur-md shadow-lg hover:bg-secondary transition-all">
+              <HugeiconsIcon icon={Layers01Icon} size={20} className="text-foreground" />
             </button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-auto p-3 rounded-2xl bg-background/95 backdrop-blur-xl border-border/50 shadow-xl">
-            <div className="flex gap-3">
-              {(Object.keys(MAP_STYLES) as StyleKey[]).map((key) => {
-                const style = MAP_STYLES[key];
-                const isActive = currentStyle === key;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setCurrentStyle(key)}
-                    className="flex flex-col items-center gap-2 group outline-none"
-                  >
-                    <div className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all duration-300 ${isActive ? 'border-primary shadow-md scale-105' : 'border-transparent shadow-sm hover:scale-105 hover:shadow-md'}`}>
-                      <img src={style.thumbnail} alt={style.name} className="w-full h-full object-cover" />
-                    </div>
-                    <span className={`text-[11px] uppercase tracking-wider font-medium transition-colors ${isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'}`}>
-                      {style.name}
-                    </span>
-                  </button>
-                );
-              })}
+          <PopoverContent className="w-72 p-4 bg-background/95 backdrop-blur-xl border-border/50 shadow-2xl rounded-2xl mr-4" align="end">
+            <div className="space-y-6">
+              {/* Type de carte */}
+              <div>
+                <h3 className="text-[10px] uppercase tracking-widest text-muted-foreground mb-3 px-1">Type de carte</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {(Object.entries(MAP_STYLES) as [StyleKey, any][]).map(([key, style]) => (
+                    <button
+                      key={key}
+                      onClick={() => setCurrentStyle(key)}
+                      className={`flex flex-col items-center gap-1.5 p-1 rounded-xl transition-all ${
+                        currentStyle === key ? "bg-primary/10 ring-2 ring-primary/20" : "hover:bg-secondary"
+                      }`}
+                    >
+                      <div className="w-full aspect-square rounded-lg overflow-hidden border border-border/50 shadow-inner">
+                        <img src={style.thumbnail} alt={style.name} className="w-full h-full object-cover" />
+                      </div>
+                      <span className={`text-[10px] font-medium ${currentStyle === key ? "text-primary" : "text-muted-foreground"}`}>
+                        {style.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Détails de la carte */}
+              <div>
+                <h3 className="text-[10px] uppercase tracking-widest text-muted-foreground mb-3 px-1">Détails de la carte</h3>
+                <div className="grid grid-cols-4 gap-2">
+                  <LayerOption 
+                    icon={ViewIcon} 
+                    label="3D" 
+                    active={show3D} 
+                    onClick={() => setShow3D(!show3D)} 
+                  />
+                  <LayerOption 
+                    icon={Alert02Icon} 
+                    label="Risques" 
+                    active={activeLayer === "quakes"} 
+                    onClick={() => {}} // Integration logic elsewhere
+                  />
+                  <LayerOption 
+                    icon={Leaf01Icon} 
+                    label="Nature" 
+                    active={activeLayer === "nature"} 
+                    onClick={() => {}} 
+                  />
+                  <LayerOption 
+                    icon={Navigation03Icon} 
+                    label="Trafic" 
+                    active={false} 
+                    onClick={() => {}} 
+                  />
+                </div>
+              </div>
             </div>
           </PopoverContent>
         </Popover>
       </div>
-    </>
+
+      <style>{`
+        .maplibregl-ctrl-group {
+          border-radius: 14px !important;
+          border: 1px solid rgba(0,0,0,0.1) !important;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important;
+          padding: 2px !important;
+          background: rgba(255, 255, 255, 0.9) !important;
+          backdrop-filter: blur(10px) !important;
+        }
+        .maplibregl-ctrl-group button {
+          width: 36px !important;
+          height: 36px !important;
+          border-radius: 10px !important;
+        }
+        .dark .maplibregl-ctrl-group {
+          background: rgba(30, 30, 30, 0.9) !important;
+          border-color: rgba(255,255,255,0.1) !important;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function LayerOption({ icon, label, active, onClick }: { icon: any; label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex flex-col items-center gap-1.5 transition-all group"
+    >
+      <div className={`w-12 h-12 rounded-xl flex items-center justify-center border transition-all ${
+        active 
+          ? "bg-primary border-primary text-white shadow-md shadow-primary/20 scale-105" 
+          : "bg-secondary/50 border-border/40 text-muted-foreground group-hover:bg-secondary group-hover:border-border"
+      }`}>
+        <HugeiconsIcon icon={icon} size={18} />
+      </div>
+      <span className={`text-[9px] font-medium truncate w-full text-center ${active ? "text-primary font-bold" : "text-muted-foreground"}`}>
+        {label}
+      </span>
+    </button>
   );
 }

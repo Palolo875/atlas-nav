@@ -4,17 +4,60 @@
 import type { WeatherData } from "./weather";
 import { getAQILevel, getUVLevel, getWindDirection } from "./weather";
 
+import { type SituationTrait } from "./priorities";
+
 export interface NarrativeInsight {
   signal: string;
   proof: string;
-  category: "comfort" | "air" | "uv" | "wind" | "visibility" | "altitude" | "precipitation" | "pressure";
+  category: "comfort" | "air" | "uv" | "wind" | "visibility" | "altitude" | "precipitation" | "pressure" | "assistance";
   severity: "info" | "warning" | "alert";
   pastel: "green" | "blue" | "yellow" | "red";
 }
 
-export function generateNarrative(weather: WeatherData, locationName: string): NarrativeInsight[] {
+export function generateNarrative(weather: WeatherData, locationName: string, traits?: Set<SituationTrait>): NarrativeInsight[] {
   const insights: NarrativeInsight[] = [];
   const { current, elevation, airQuality } = weather;
+
+  // 1. Situational Signals (Priority 1)
+  if (traits?.has("VITAL")) {
+    insights.push({
+      signal: `Zone de service prioritaire. Contacts d'urgence activés pour ${locationName}.`,
+      proof: "Appel direct disponible (112)",
+      category: "assistance",
+      severity: "alert",
+      pastel: "red",
+    });
+  }
+
+  if (traits?.has("ATLAS")) {
+    insights.push({
+      signal: `Vue d'ensemble du territoire. Données culturelles et macro-économiques en priorité.`,
+      proof: "Échelle pays / région",
+      category: "visibility",
+      severity: "info",
+      pastel: "blue",
+    });
+  }
+
+  if (traits?.has("WILD")) {
+    insights.push({
+      signal: `Zone naturelle. Vérifiez les conditions météo avant de vous engager.`,
+      proof: `Altitude ${weather.elevation?.toFixed(0) || "—"}m`,
+      category: "altitude",
+      severity: "warning",
+      pastel: "yellow",
+    });
+  }
+
+  if (traits?.has("MARITIME")) {
+    insights.push({
+      signal: `Zone maritime. Conditions de vent et de houle à surveiller.`,
+      proof: `Vent ${current.windSpeed.toFixed(0)} km/h ${getWindDirection(current.windDirection)}`,
+      category: "wind",
+      severity: current.windSpeed > 40 ? "alert" : "info",
+      pastel: current.windSpeed > 40 ? "red" : "blue",
+    });
+  }
 
   // Thermal comfort
   const tempDiff = Math.abs(current.temperature - current.apparentTemperature);

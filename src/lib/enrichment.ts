@@ -7,6 +7,12 @@ export interface WikiSummary {
   thumbnail?: string;
   url: string;
   description?: string;
+  wikidataId?: string;
+  facts?: {
+    population?: number;
+    elevation?: number;
+    area?: number; // km²
+  };
 }
 
 export async function fetchWikipediaSummary(lat: number, lon: number, locationName: string): Promise<WikiSummary | null> {
@@ -36,12 +42,38 @@ export async function fetchWikipediaSummary(lat: number, lon: number, locationNa
     if (!summaryRes.ok) return null;
     const summary = await summaryRes.json();
 
+    let facts;
+    if (summary.wikibase_item) {
+      try {
+        const wdRes = await fetch(
+          `https://www.wikidata.org/w/api.php?action=wbgetclaims&entity=${summary.wikibase_item}&property=P1082|P2044|P2046&format=json&origin=*`
+        );
+        const wdData = await wdRes.json();
+        const claims = wdData?.claims || {};
+        facts = {};
+        
+        if (claims.P1082?.[0]?.mainsnak?.datavalue?.value?.amount) {
+          facts.population = parseInt(claims.P1082[0].mainsnak.datavalue.value.amount.replace('+', ''));
+        }
+        if (claims.P2044?.[0]?.mainsnak?.datavalue?.value?.amount) {
+          facts.elevation = parseFloat(claims.P2044[0].mainsnak.datavalue.value.amount.replace('+', ''));
+        }
+        if (claims.P2046?.[0]?.mainsnak?.datavalue?.value?.amount) {
+          facts.area = parseFloat(claims.P2046[0].mainsnak.datavalue.value.amount.replace('+', ''));
+        }
+      } catch (e) {
+        console.error("Failed fetching Wikidata facts:", e);
+      }
+    }
+
     return {
       title: summary.title,
       extract: summary.extract || "",
       thumbnail: summary.thumbnail?.source,
       url: summary.content_urls?.desktop?.page || "",
       description: summary.description,
+      wikidataId: summary.wikibase_item,
+      facts,
     };
   } catch {
     return null;
@@ -53,6 +85,8 @@ export interface WikimediaPhoto {
   title: string;
   url: string;
   thumbUrl: string;
+  lat: number;
+  lon: number;
 }
 
 export async function fetchWikimediaPhotos(lat: number, lon: number, limit = 6): Promise<WikimediaPhoto[]> {
@@ -80,6 +114,8 @@ export async function fetchWikimediaPhotos(lat: number, lon: number, limit = 6):
             title: file.title.replace("File:", "").replace(/\.\w+$/, ""),
             url: ii.url,
             thumbUrl: ii.thumburl || ii.url,
+            lat: file.lat,
+            lon: file.lon,
           });
         }
       } catch {}
@@ -90,7 +126,22 @@ export async function fetchWikimediaPhotos(lat: number, lon: number, limit = 6):
   }
 }
 
-// ─── RestCountries ───────────────────────────────────────────────────
+// ─── Countries Dataset (DATASET_FIRST) ───────────────────────────────
+// Loaded once from local snapshot, cached in memory for all subsequent lookups.
+let countriesCache: any[] | null = null;
+
+async function getCountriesDataset(): Promise<any[] | null> {
+  if (countriesCache) return countriesCache;
+  try {
+    const res = await fetch('/datasets/countries.json');
+    if (!res.ok) return null;
+    countriesCache = await res.json();
+    return countriesCache;
+  } catch {
+    return null;
+  }
+}
+
 export interface CountryInfo {
   name: string;
   nativeName: string;
@@ -106,6 +157,12 @@ export interface CountryInfo {
   callingCode: string;
   tld: string;
   borders: string[];
+  emergency?: {
+    all: string;
+    police?: string;
+    ambulance?: string;
+    fire?: string;
+  };
 }
 
 export async function fetchCountryInfo(lat: number, lon: number): Promise<CountryInfo | null> {
@@ -118,11 +175,15 @@ export async function fetchCountryInfo(lat: number, lon: number): Promise<Countr
     const countryCode = geoData?.features?.[0]?.properties?.countrycode;
     if (!countryCode) return null;
 
-    const res = await fetch(
-      `https://restcountries.com/v3.1/alpha/${countryCode}?fields=name,flags,capital,population,area,region,subregion,languages,currencies,timezones,idd,tld,borders`
-    );
-    if (!res.ok) return null;
-    const c = await res.json();
+    // Fetch from our local dataset (cached singleton)
+    const allList = await getCountriesDataset();
+    if (!allList) return null;
+    const c = allList.find((country: any) => country.cca2 === countryCode);
+    if (!c) return null;
+
+    // Add emergency numbers from local dataset
+    const emergencyList = await getEmergencyDataset();
+    const emm = emergencyList?.find((e: any) => e.countryCode === countryCode);
 
     const langNames = new Intl.DisplayNames(['fr'], { type: 'language' });
     const langs = c.languages 
@@ -158,7 +219,22 @@ export async function fetchCountryInfo(lat: number, lon: number): Promise<Countr
       callingCode: c.idd?.root ? `${c.idd.root}${c.idd.suffixes?.[0] || ""}` : "",
       tld: c.tld?.[0] || "",
       borders: c.borders || [],
+      emergency: emm?.emergency,
     };
+  } catch {
+    return null;
+  }
+}
+
+// ─── Emergency Dataset ───────────────────────────────────────────────
+let emergencyCache: any[] | null = null;
+async function getEmergencyDataset(): Promise<any[] | null> {
+  if (emergencyCache) return emergencyCache;
+  try {
+    const res = await fetch('/datasets/emergency.json');
+    if (!res.ok) return null;
+    emergencyCache = await res.json();
+    return emergencyCache;
   } catch {
     return null;
   }
@@ -193,8 +269,22 @@ const overpassCategories: Record<string, { query: string; label: string }> = {
   worship: { query: `node["amenity"="place_of_worship"]`, label: "Lieu de culte" },
 };
 
+// ─── Overture Maps / Local Dataset (Architectural Goal) ────────────
+// In the future, this will query our own Cloudflare Worker pointing to an Overture PMTiles/Parquet snapshot.
+async function fetchLocalOverturePOIs(lat: number, lon: number, radiusM: number): Promise<NearbyPOI[] | null> {
+  // Placeholder: Not implemented yet. We return null to force the Overpass fallback.
+  return null;
+}
+
+// ─── Overpass (OSM) — Fallback POIs ──────────────────────────────────
+// Overpass is marked as FALLBACK_ONLY in source-audit.md
 export async function fetchNearbyPOIs(lat: number, lon: number, radiusM = 2000): Promise<NearbyPOI[]> {
   try {
+    // 1. Attempt to fetch from future local dataset
+    const localPOIs = await fetchLocalOverturePOIs(lat, lon, radiusM);
+    if (localPOIs && localPOIs.length > 0) return localPOIs;
+
+    // 2. Fallback to Overpass Public API
     const queries = Object.entries(overpassCategories)
       .map(([, v]) => `${v.query}(around:${radiusM},${lat},${lon});`)
       .join("");
@@ -275,6 +365,59 @@ export async function fetchEarthquakes(lat: number, lon: number, radiusKm = 300,
   }
 }
 
+// ─── EONET NASA (Natural Events) ────────────────────────────────────
+export interface NaturalEvent {
+  id: string;
+  title: string;
+  category: string;
+  date: string;
+  distanceKm: number;
+  lat: number;
+  lon: number;
+}
+
+export async function fetchEONETEvents(lat: number, lon: number, radiusKm = 500): Promise<NaturalEvent[]> {
+  try {
+    const res = await fetch(`https://eonet.gsfc.nasa.gov/api/v3/events?status=open&days=30`);
+    if (!res.ok) return [];
+    
+    const data = await res.json();
+    const result: NaturalEvent[] = [];
+    
+    for (const event of data.events || []) {
+      const geom = event.geometry?.[0];
+      if (geom && geom.coordinates) {
+        // Handle Points or Polygons
+        let eLon, eLat;
+        if (geom.type === "Point") {
+          [eLon, eLat] = geom.coordinates;
+        } else if (geom.type === "Polygon" && Array.isArray(geom.coordinates[0])) {
+          [eLon, eLat] = geom.coordinates[0][0]; // Take first point of polygon
+        } else {
+          continue;
+        }
+
+        const dist = Math.round(haversine(lat, lon, eLat, eLon) / 1000);
+        if (dist <= radiusKm) {
+          result.push({
+            id: event.id,
+            title: event.title,
+            category: event.categories?.[0]?.title || "Natural Event",
+            date: geom.date,
+            distanceKm: dist,
+            lat: eLat,
+            lon: eLon,
+          });
+        }
+      }
+    }
+    
+    return result.sort((a, b) => a.distanceKm - b.distanceKm);
+  } catch {
+    return [];
+  }
+}
+
 // ─── GBIF (biodiversity) ────────────────────────────────────────────
 export interface GBIFSpecies {
   scientificName: string;
@@ -333,6 +476,38 @@ export async function fetchGBIFSpecies(lat: number, lon: number): Promise<GBIFSp
     return [];
   }
 }
+
+// ─── iNaturalist (biodiversity) ──────────────────────────────────────
+export async function fetchINaturalistSpecies(lat: number, lon: number): Promise<GBIFSpecies[]> {
+  try {
+    const res = await fetch(
+      `https://api.inaturalist.org/v1/observations?lat=${lat}&lng=${lon}&radius=2&per_page=30&order=desc&order_by=created_at`
+    );
+    const data = await res.json();
+    const speciesMap = new Map<string, GBIFSpecies>();
+
+    for (const obs of data.results || []) {
+      if (!obs.taxon) continue;
+      const key = obs.taxon.name;
+      if (speciesMap.has(key)) {
+        const s = speciesMap.get(key)!;
+        s.count++;
+      } else {
+        speciesMap.set(key, {
+          scientificName: obs.taxon.name,
+          vernacularName: obs.taxon.preferred_common_name || obs.taxon.name,
+          kingdom: obs.taxon.iconic_taxon_name || "Lieu",
+          count: 1,
+          occurrences: obs.location ? [{ lat: parseFloat(obs.location.split(',')[0]), lon: parseFloat(obs.location.split(',')[1]) }] : [],
+        });
+      }
+    }
+    return Array.from(speciesMap.values()).sort((a, b) => b.count - a.count).slice(0, 10);
+  } catch {
+    return [];
+  }
+}
+
 
 // ─── Elevation profile narrative ─────────────────────────────────────
 export function generateDeepLink(lat: number, lon: number, label?: string): string {
